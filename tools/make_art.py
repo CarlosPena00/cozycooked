@@ -1694,12 +1694,12 @@ def mist(w=256, h=128):
 
 
 def sunset_gradient(h=256):
-    """Vertical golden-hour wash: rose at the top, peach in the middle, a light rose-peach at the bottom.
-    No amber at the bottom: over blue water and green grass it mixes to olive."""
+    """Vertical golden-hour wash: mauve at the top, rose in the middle, a warm coral at the bottom.
+    Rose rather than peach: peach is the teal lake's complement and greys it out; rose turns it dusky periwinkle."""
     stops = [
-        (0.0, (242, 102, 138, 0.30)),
-        (0.5, (255, 138, 96, 0.26)),
-        (1.0, (255, 150, 110, 0.22)),
+        (0.0, (214, 104, 168, 0.20)),
+        (0.5, (232, 108, 150, 0.16)),
+        (1.0, (250, 140, 120, 0.14)),
     ]
     f = Image.new("RGBA", (8, h))
     for y in range(h):

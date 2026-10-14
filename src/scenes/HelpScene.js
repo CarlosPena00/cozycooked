@@ -1,6 +1,7 @@
 // Pause/help overlay on top of the paused kitchen: controls and the three recipes as picture cards.
 import { RECIPES, INGREDIENTS, ASSEMBLIES, SPRITES } from '../data.js';
 import { t } from '../text.js';
+import { writeSave } from '../save.js';
 import { panel } from '../hud.js';
 import { INK, COLORS, artImage } from '../views.js';
 
@@ -39,7 +40,9 @@ export class HelpScene extends Phaser.Scene {
   create() {
     const cx = 960;
     this.add.rectangle(0, 0, 1920, 1080, 0x1b1210, 0.55).setOrigin(0);
-    panel(this, 160, 60, 1600, 960);
+    // Nearly full screen and opaque, so no order card or clock edge peeks out around or through it.
+    this.add.graphics().fillStyle(COLORS.paper).fillRoundedRect(10, 8, 1900, 1064, 18);
+    panel(this, 10, 8, 1900, 1064);
     const ink = (x, y, text, style = {}) => this.add.text(x, y, text, { ...INK, ...style });
     ink(cx, 120, t('help.title'), { fontSize: '60px', fontStyle: '600' }).setOrigin(0.5);
 
@@ -66,9 +69,17 @@ export class HelpScene extends Phaser.Scene {
       const text = ink(x + w + 14, 888, label, { fontSize: '26px' }).setOrigin(0, 0.5);
       x += w + text.width + 60;
     }
-    ink(cx, 970, t('help.back'), { fontSize: '26px', color: COLORS.inkSoft }).setOrigin(0.5);
+    ink(cx, 970, `${t('help.back')}      ·      ${t('help.quit')}`, { fontSize: '26px', color: COLORS.inkSoft }).setOrigin(0.5);
 
     for (const key of ['ESC', 'P', 'H']) this.input.keyboard.on(`keydown-${key}`, () => this.close());
+    this.input.keyboard.once('keydown-Q', () => this.toTitle());
+  }
+
+  // Back to the title: the day starts over next time, the coins picked up so far are kept.
+  toTitle() {
+    writeSave({ coins: this.scene.get('kitchen').wallet });
+    this.scene.stop('kitchen');
+    this.scene.start('title');
   }
 
   recipeCard(id, recipe, x, y) {

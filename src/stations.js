@@ -88,10 +88,13 @@ function bin(station, held) {
 }
 
 // Counters hold anything; boards hold ingredients and chop cheese. Both assemble and swap.
+// On a board, raw cheese and dough stack up in either order (cheese on top, station.under = the dough):
+// chopping the cheese then makes the pastel right there, so the natural "dough first" never dead-ends.
 function holder(station, held) {
-  const { item } = station;
+  const { item, under } = station;
   const board = station.type === 'board';
   if (board && held?.dish) return refuse('boardOnly');
+  if (under && held) return refuse('chopFirst'); // a stack only gets chopped
   const rule = assemblyFor(held, item);
   if (rule) {
     return act(rule.action, () => {
@@ -100,11 +103,25 @@ function holder(station, held) {
       return null;
     });
   }
-  if (needsChop(held, item)) return refuse('chopFirst');
+  if (needsChop(held, item)) {
+    if (!board) return refuse('chopFirst');
+    const heldRaw = INGREDIENTS[held.kind].choppable;
+    return act(heldRaw ? 'cheeseOnDough' : 'doughUnder', () => {
+      station.item = heldRaw ? held : item;
+      station.under = heldRaw ? item : held; // chops already done on the cheese still count
+      return null;
+    });
+  }
   if (board && !held && item && INGREDIENTS[item.kind].choppable && !item.chopped) {
     return act('chop', () => {
       station.chops += 1;
-      if (station.chops >= CHOPS_NEEDED) station.item = { ...item, chopped: true };
+      if (station.chops >= CHOPS_NEEDED) {
+        const chopped = { ...item, chopped: true };
+        const made = under && assemblyFor(under, chopped);
+        station.item = made ? newIngredient(made.makes) : chopped;
+        station.under = null;
+        if (made) station.chops = 0;
+      }
       return null;
     }, station.chops);
   }

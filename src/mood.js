@@ -23,8 +23,12 @@ const MIST_AREAS = [
   { left: 4, top: 10, right: 19, bottom: 11 }, // under the bottom panel
 ];
 const FIREFLIES = 10;
-const SUNSET_OVERLAY = 0.5; // the overlay copy of the wash, relative to the normal one (stronger looks flat and peach)
+// The overlay copy of the wash, relative to the normal one. The overlay does most of the work: it tints the teal lake
+// towards periwinkle and keeps its saturation, while a strong normal wash would grey it (max 1.25 at the 0.8 peak).
+const SUNSET_OVERLAY = 1.25;
 const SUNSET_KITCHEN = 0.5; // how much of the wash is cut out over the lamplit kitchen
+const GLINT = 0xe8f4ee;
+const GLINT_GOLD = 0xffd690; // glints at sunset
 const lerp = (a, b, p) => a + (b - a) * p;
 
 // Keyframes [t, ...] -> the two around t and how far between them (0..1).
@@ -187,7 +191,7 @@ export class Mood {
       if (ch === '~' && ty >= 2 && ty <= 9 && tx >= 2 && tx < MAP[0].length - 1) water.push([tx, ty]);
     }));
     return Array.from({ length: n }, (_, i) => {
-      const glint = this.scene.add.rectangle(0, 0, 4 * S, S, 0xe8f4ee, 1).setDepth(DEPTH.glint).setAlpha(0);
+      const glint = this.scene.add.rectangle(0, 0, 4 * S, S, GLINT, 1).setDepth(DEPTH.glint).setAlpha(0);
       const place = () => {
         const [tx, ty] = Phaser.Utils.Array.GetRandom(water);
         const inTile = () => Phaser.Math.Between(TILE * 0.12, TILE * 0.88);
@@ -230,7 +234,13 @@ export class Mood {
       if (show) m.setPosition(x, 0).setAlpha(mist).setCrop(left, m.area.y, right - left, bottom - m.area.y);
     }
     const sunset = valueAt(DAY.sunset, t);
-    this.sunset.forEach((wash, i) => wash.setAlpha(sunset * (i ? SUNSET_OVERLAY : 1)).setVisible(sunset > 0.005));
+    this.sunset.forEach((wash, i) => wash.setAlpha(Math.min(1, sunset * (i ? SUNSET_OVERLAY : 1))).setVisible(sunset > 0.005));
+    // The glints on the water turn warm gold with the golden hour.
+    const gold = Math.round(Math.min(1, sunset / 0.8) * 10) / 10;
+    if (gold !== this.glintGold) {
+      this.glintGold = gold;
+      for (const glint of this.glints) glint.setFillStyle(mixColor(GLINT, GLINT_GOLD, gold));
+    }
     const night = valueAt(DAY.night, t);
     this.night.setAlpha(night).setVisible(night > 0.005);
     this.dark = Math.min(1, night / 0.6); // 0 by day .. 1 at night: the HUD and the done halo follow it

@@ -195,10 +195,10 @@ export const DAY = {
   lanterns: 255, // lanterns and string lights switch on at dusk, a little before the clock says Night
   light: [[0, 0.6], [30, 1], [210, 1], [255, 0.6], [300, 0.25]],
   // Looks (mood.js), all [t, value] keyframes, linear in between. sky: a colour wash [t, color, alpha] (dawn lavender,
-  // amber at sunset); mist: dawn mist over the lake; sunset: the rose-to-amber golden hour; night: the blue night mask (the kitchen
+  // rose at sunset); mist: dawn mist over the lake; sunset: the rose-to-amber golden hour; night: the blue night mask (the kitchen
   // and the deck stay almost clear of it, so only the far lake gets dim).
   // The night only starts once the golden hour has peaked, so blue never muddies the amber and rose.
-  sky: [[0, 0xbec8eb, 0.14], [30, 0xffe2b0, 0], [200, 0xffb060, 0], [228, 0xff9a6a, 0.06], [250, 0xff7a6a, 0.08], [268, 0x8a6ab0, 0.05], [280, 0x6a5aa8, 0]],
+  sky: [[0, 0xbec8eb, 0.14], [30, 0xffe2b0, 0], [200, 0xffb060, 0], [228, 0xf58aa0, 0.06], [250, 0xe87a9a, 0.08], [268, 0x8a6ab0, 0.05], [280, 0x6a5aa8, 0]],
   mist: [[0, 1], [18, 0.75], [40, 0]],
   sunset: [[195, 0], [222, 0.8], [250, 0.8], [280, 0]],
   night: [[0, 0.2], [30, 0], [242, 0], [268, 0.42], [285, 0.6], [300, 0.64]],
@@ -248,6 +248,7 @@ export const STRINGS = {
   action: {
     take: 'take {item}', putBack: 'put it back',
     pickUp: 'pick it up', putDown: 'put it down', swap: 'swap', makePastel: 'make a pastel',
+    cheeseOnDough: 'put it on the dough', doughUnder: 'slide it under the cheese',
     chop: 'chop ({n}/{max})', putOnBoard: 'put it on the board',
     addPot: 'add to the pot', addFryer: 'put in the fryer',
     plate: 'plate it - just right!', plateEarly: 'plate it rustic (a bit cozycooked)',
@@ -286,6 +287,11 @@ export const STRINGS = {
     choppedCheese: 'Add it to a POT for baiao, or put dough on it for a pastel.',
     rawPastel: 'Pop it in the FRYER.',
     toPot: 'Put it in a POT with the rest of its recipe.',
+    doughBoard: 'Chop some cheese first - the dough can wait under it on the CUTTING BOARD.',
+    doughWait: 'Chop some cheese first - set the dough on a counter meanwhile.',
+    notNeeded: 'Nobody ordered that - set it on a counter, or toss it in the BIN.',
+    freePot: 'Both POTS are taken - toss anything in one for a mystery stew to free it.',
+    freePotHeld: 'Both POTS are taken - toss it in one for a mystery stew to free it.',
     ready: 'The {station} is ready! Press E on it to plate it.',
     coins: 'Coins! Walk over them to scoop them up.',
     cooking: 'Bubbling away. Take it out anytime, or start the next order.',
@@ -313,6 +319,7 @@ export const STRINGS = {
     rules: 'Nothing burns and nobody is in a hurry. Take food out early if you like: customers find rustic, '
       + 'cozycooked dishes charming.',
     back: 'Esc / P / H: back to the kitchen',
+    quit: 'Q: back to the title (your coins are kept)',
   },
   diary: {
     title: 'Diary - Day {day}',

@@ -231,6 +231,8 @@ export class StationView {
     this.x = x;
     this.y = y;
     this.item = new ItemView(scene, x, y - px(1), DEPTH.stationItem);
+    // A board can hold a stack: dough under raw cheese (the cheese sits a little higher, on top of it).
+    if (station.type === 'board') this.under = new ItemView(scene, x, y + px(1.5), DEPTH.stationItem - 0.5);
     // Just above the tile, so the chef standing below never covers it: a dark outline around a cream backing
     // (readable on the green wall), filled in whole art pixels.
     this.barWidth = px(12);
@@ -269,7 +271,11 @@ export class StationView {
     let progress = 0;
     if (this.cooker) progress = this.syncCooker(station, time, dark);
     else {
-      if (station.type === 'board') progress = station.chops / CHOPS_NEEDED;
+      if (station.type === 'board') {
+        progress = station.chops / CHOPS_NEEDED;
+        this.under.set(station.under);
+        this.item.setPosition(this.x, this.y - px(station.under ? 3.5 : 1));
+      }
       this.item.set(station.item);
     }
     for (const o of [...this.barBack, this.bar]) o.setVisible(progress > 0);
@@ -429,6 +435,12 @@ export class CustomerView {
     this.lineLeft = 0;
     this.lift = 0;
     this.served = false;
+    // Waiting guests breathe (a 1 art px bob, each at its own pace) and blink now and then (a 1 art px squash).
+    this.phase = Math.random() * Math.PI * 2;
+    this.breath = 2200 + Math.random() * 800; // ms per breath
+    this.blinkAt = scene.time.now + 1500 + Math.random() * 3000;
+    this.hop = 0;
+    this.eager = false; // hopped already for the dish coming their way
   }
 
   // Show a line in the bubble for a few seconds (reactions, idle, bye).
@@ -437,7 +449,8 @@ export class CustomerView {
     this.lineLeft = seconds;
   }
 
-  sync(c, dt) {
+  // chef: { x, y, recipe } while the chef carries a dish (else null): a guest hops when their dish comes close.
+  sync(c, dt, chef = null) {
     const x = c.x * TILE + TILE / 2;
     const feet = customerFeet(c.ty);
     const { body, id } = this;
@@ -447,8 +460,20 @@ export class CustomerView {
     } else if (c.state === 'waiting') {
       body.play(`${id}_front`, true).setFlipX(false);
     }
+    const waiting = c.state === 'waiting';
+    const now = this.scene.time.now;
+    const bob = waiting ? Math.round((1 + Math.sin(now / this.breath * Math.PI * 2 + this.phase)) / 2) * S : 0;
+    if (waiting && !this.served) {
+      const blinking = now >= this.blinkAt;
+      if (now >= this.blinkAt + 130) this.blinkAt = now + 2500 + Math.random() * 4000;
+      body.setScale(S, blinking ? S * (1 - 1 / body.frame.height) : S);
+      // A small happy hop once, when the chef brings this guest's dish near their window.
+      const near = chef && chef.recipe === c.recipe && Math.abs(chef.y - tileCenter(c.ty)) < TILE * 0.6 && c.spot.tx * TILE - chef.x < TILE * 2.5;
+      if (near && !this.eager) this.scene.tweens.add({ targets: this, hop: px(2), duration: 130, yoyo: true, ease: 'Sine.easeOut' });
+      this.eager = !!near;
+    }
     // Lower rows stand in front (neighbouring guests overlap a little, and more when they hop).
-    body.setPosition(x, feet - this.lift).setDepth(DEPTH.customer + c.ty / 100);
+    body.setPosition(x, feet - this.lift - bob - Math.round(this.hop / S) * S).setDepth(DEPTH.customer + c.ty / 100);
     this.shadow.setPosition(x, feet - 2);
 
     this.lineLeft -= dt;
@@ -464,6 +489,8 @@ export class CustomerView {
 
   react(c, x, feet) {
     this.served = true;
+    this.scene.tweens.killTweensOf(this); // stop the happy hop, the served hop takes over
+    this.hop = 0;
     const happy = c.mood !== 'surprised';
     this.body.stop().setFrame(ART_FRAMES[happy ? `${this.id}_happy` : `${this.id}_front_0`]);
     // Squash, then spring up into the hop.

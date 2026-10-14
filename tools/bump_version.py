@@ -5,7 +5,7 @@ module goes through the import map in index.html, which maps its plain URL to a 
 main script carry the same ?v=N. The deploy workflow runs it with the commit's short sha, so deploys never need a
 manual bump; run it by hand only to pick up new or removed modules locally:
 
-    python3 tools/bump_version.py           # N + 1
+    python3 tools/bump_version.py           # N + 1 (1 after a non-numeric version such as a sha)
     python3 tools/bump_version.py 20        # set N
     python3 tools/bump_version.py 1a2b3c4   # any short token (letters, digits, - _ .), e.g. a commit sha
 """
@@ -32,7 +32,8 @@ def main():
         if not re.fullmatch(r"[\w.-]{1,40}", version):
             sys.exit(f"bad version {version!r}: use letters, digits, - _ . only")
     else:
-        version = max(int(v) for v in re.findall(r"\?v=(\d+)\b", html)) + 1
+        # After a sha deploy there is no number to bump: start again at 1.
+        version = max((int(v) for v in re.findall(r"\?v=(\d+)\b", html)), default=0) + 1
     html = re.sub(r"\?v=[\w.-]+", f"?v={version}", html)
     imports = {f"./{m}": f"./{m}?v={version}" for m in modules()}
     block = json.dumps({"imports": imports}, indent=2).replace("\n", "\n  ")

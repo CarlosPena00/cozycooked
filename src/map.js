@@ -134,7 +134,7 @@ export function addMapImage(scene) {
 }
 
 export function newStation(type, tx, ty, kind = null) {
-  return { type, tx, ty, kind, item: null, chops: 0, contents: [], progress: 0 };
+  return { type, tx, ty, kind, item: null, under: null, chops: 0, contents: [], progress: 0 };
 }
 
 // -> { ground: the baked map image, walls: arcade static group, stations: Map "tx,ty" -> station state }
