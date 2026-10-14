@@ -1,6 +1,6 @@
 """Generate Cozycooked's self-made pixel art (16x16 frames; looks right from 4x up to 6x).
 
-Run from games/cozycooked/:  uv run -q --with pillow python -I tools/make_art.py
+Run from the repo root:  uv run -q --with pillow python -I tools/make_art.py
 
 Outputs (assets/art/):
   art.png        one spritesheet, 16x16 frames, no spacing, 16 columns (new frames are appended, so indexes of

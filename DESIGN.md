@@ -19,7 +19,7 @@
 | Fumaça preta | Vapor em formato de coração |
 | Estrelas/pontuação | Moedas que caem no chão, como no Kingdom |
 
-**Objetivo do projeto:** portfólio/diversão. Hospedado no GitHub Pages em `games/cozycooked/`.
+**Objetivo do projeto:** portfólio/diversão. Hospedado no GitHub Pages em https://carlospena.com.br/cozycooked/ (repo próprio).
 
 ## 2. Gameplay
 
@@ -126,7 +126,7 @@ O repo é público, então commitar os PNGs é redistribuir. **Proibidos:** Lime
 
 ### Estrutura de pastas
 ```
-games/cozycooked/
+cozycooked/
   index.html  style.css
   src/
     main.js  config.js
