@@ -109,8 +109,9 @@ function paint(scene, key, frame) {
     if (name in ART_FRAMES) p.art(name, tx, ty, dx, dy);
     else p.image(name, tx, ty);
   }
-  tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+  // refresh() re-uploads with the game's default (LINEAR, since antialias is on), so NEAREST must come after it.
   tex.refresh();
+  tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
 }
 
 // Baked once per game; scene restarts (new days) and the title reuse the textures.
