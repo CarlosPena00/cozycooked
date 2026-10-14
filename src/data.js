@@ -125,7 +125,7 @@ export const DECK = {
   enterX: 21, // off-screen right (col 20 starts at x 1920)
   platform: { left: 13, top: 4, right: 16, bottom: 8 },
   pier: { left: 17, top: 5, right: 19, bottom: 7 }, // continues to the right bank
-  coinArea: { cols: [9, 11], rows: [4, 7] }, // coins land on these floor tiles, near the windows
+  coinArea: { cols: [9, 11], rows: [6, 7] }, // coins land on these floor tiles, near the windows (below the label at the pots)
   idleAfter: 45, // seconds waiting before the flavor idle line
   idleSeconds: 3,
   reactSeconds: 2.5,
@@ -190,16 +190,17 @@ export const DAY = {
     { id: 'dawn', start: 0 },
     { id: 'day', start: 30 },
     { id: 'sunset', start: 210 },
-    { id: 'night', start: 255 },
+    { id: 'night', start: 265 }, // the clock says Night once the blue has taken over from the golden hour
   ],
+  lanterns: 255, // lanterns and string lights switch on at dusk, a little before the clock says Night
   light: [[0, 0.6], [30, 1], [210, 1], [255, 0.6], [300, 0.25]],
   // Looks (mood.js), all [t, value] keyframes, linear in between. sky: a colour wash [t, color, alpha] (dawn lavender,
   // amber at sunset); mist: dawn mist over the lake; sunset: the rose-to-amber golden hour; night: the blue night mask (the kitchen
   // and the deck stay almost clear of it, so only the far lake gets dim).
   // The night only starts once the golden hour has peaked, so blue never muddies the amber and rose.
-  sky: [[0, 0xbec8eb, 0.14], [30, 0xffe2b0, 0], [200, 0xffb060, 0], [228, 0xffa050, 0.1], [250, 0xff7a6a, 0.1], [268, 0x8a6ab0, 0.05], [280, 0x6a5aa8, 0]],
+  sky: [[0, 0xbec8eb, 0.14], [30, 0xffe2b0, 0], [200, 0xffb060, 0], [228, 0xff9a6a, 0.06], [250, 0xff7a6a, 0.08], [268, 0x8a6ab0, 0.05], [280, 0x6a5aa8, 0]],
   mist: [[0, 1], [18, 0.75], [40, 0]],
-  sunset: [[195, 0], [222, 1], [250, 1], [280, 0]],
+  sunset: [[195, 0], [222, 0.8], [250, 0.8], [280, 0]],
   night: [[0, 0.2], [30, 0], [242, 0], [268, 0.42], [285, 0.6], [300, 0.64]],
   closingMaxSeconds: 4, // after closing starts, the diary appears when the deck is empty or after this
   // Calm gaps: a guest arrives `gaps[day][n]` seconds (+-jitter) after the latest arrival or departure,
@@ -262,7 +263,8 @@ export const STRINGS = {
     fryerOnly: 'the fryer only takes a raw pastel',
     handsFull: 'hands full - set it on a counter first',
     dishInHand: 'one dish at a time - serve this one first',
-    missing: 'not finished yet - add the rest of the recipe',
+    missing: 'add the rest - or toss in anything for a mystery stew',
+    alone: 'toss in anything else for a mystery stew',
     nobody: 'nobody is waiting yet',
     needDish: 'bring a dish from a pot or fryer',
     closed: 'closed for today - good night!',
@@ -288,6 +290,7 @@ export const STRINGS = {
     coins: 'Coins! Walk over them to scoop them up.',
     cooking: 'Bubbling away. Take it out anytime, or start the next order.',
     missing: 'The {station} needs {items} for {dish}.',
+    waiting: 'The {station} waits for more - or toss in anything for a mystery stew.',
     relax: 'Relax and enjoy the lake. Guests are on their way.',
   },
   // "Next:" hint for the oldest order when the chef has free hands and nothing is cooking.

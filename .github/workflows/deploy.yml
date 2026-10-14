@@ -26,6 +26,9 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Version the modules with the commit
+        # Every deploy gets fresh ?v= URLs (the short sha), so browsers never mix old and new modules.
+        run: python3 tools/bump_version.py "${GITHUB_SHA::7}"
       - name: Collect the site files
         # DESIGN.md and tools/ stay out of the published site.
         run: |

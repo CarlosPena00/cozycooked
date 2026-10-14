@@ -54,11 +54,20 @@ export function cookerStatus(station) {
   return best;
 }
 
+// One rule for what waits: a cooker cooks a whole recipe, or two or more things that fit no recipe (a mystery stew).
+// Anything less waits for more: half a recipe, or one lone ingredient (it never turns into a stew by itself).
+// -> null (empty, or cooking / cooked), 'missing' (half a recipe) or 'alone' (one ingredient that fits no recipe).
+export function waitingFor(station) {
+  const { recipe, have, missing } = cookerStatus(station);
+  if (recipe && missing.length) return 'missing';
+  return !recipe && have.length === 1 ? 'alone' : null;
+}
+
 // Advance a cooker by dt seconds. Returns true on the frame it finishes. Nothing ever burns.
-// Half a recipe waits for the rest instead (it would only cook into a mystery stew nobody asked for).
+// A waiting cooker (see waitingFor) does not cook.
 export function cook(station, dt) {
   if (!isCooker(station) || !station.contents.length || station.progress >= 1) return false;
-  if (cookerStatus(station).missing.length) return false;
+  if (waitingFor(station)) return false;
   station.progress = Math.min(1, station.progress + dt / COOKERS[station.type].seconds);
   return station.progress >= 1;
 }
@@ -127,9 +136,10 @@ function cooker(station, held) {
   // Only a dish can be in hand here (ingredients were handled above): point it at a window.
   if (!contents.length) return refuse(held ? 'takeDish' : def.empty);
   if (held) return refuse('dishInHand'); // one dish at a time
-  // Half a recipe stays in (so a quick double E after adding milk never makes an accidental mystery stew).
-  // Never a softlock: recipes are smaller than the pot, so one more wrong ingredient always makes a mystery stew.
-  if (cookerStatus(station).missing.length) return refuse('missing');
+  // Half a recipe or a lone ingredient stays in (so a quick double E after adding milk never makes an accidental
+  // mystery stew). Never a softlock: recipes are smaller than the pot, so one more wrong ingredient makes a stew.
+  const waiting = waitingFor(station);
+  if (waiting) return refuse(waiting);
   // A short grace after the last ingredient went in, so a quick double E never plates it raw by accident.
   if (station.progress * def.seconds < COOK_GRACE) return refuse('justAdded');
   const cooked = station.progress >= 1;

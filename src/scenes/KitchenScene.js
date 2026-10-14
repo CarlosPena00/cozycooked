@@ -8,7 +8,7 @@ import {
   TILE, ART_SCALE, SPEED, CHOPS_NEEDED, COIN_PICK_RADIUS, PLAYER_START, INGREDIENTS, COOKERS, COOK_LOOPS, COOK_GRACE,
   DAY, DECK, KITCHEN, MAP, NEXT_FOR_INGREDIENT, RECIPES,
 } from '../data.js';
-import { resolve, cook, isCooker, ingredientKey, cookerStatus } from '../stations.js';
+import { resolve, cook, isCooker, ingredientKey, cookerStatus, waitingFor } from '../stations.js';
 import { Day } from '../day.js';
 import { Customers } from '../customers.js';
 import { buildKitchen } from '../map.js';
@@ -27,7 +27,6 @@ const ACTION_EVENTS = {
   makePastel: 'assemble', throwAway: 'bin',
 };
 
-const NIGHT_START = DAY.phases.find((p) => p.id === 'night').start;
 const lerp = (a, b, p) => a + (b - a) * p;
 // Labels and floating lines stay over the kitchen (walls included), never over the deck or the lake.
 const KITCHEN_PX = { left: KITCHEN.left * TILE, right: KITCHEN.right * TILE };
@@ -187,7 +186,7 @@ export class KitchenScene extends Phaser.Scene {
   tickDay(dt) {
     const phase = this.day.update(dt);
     if (phase) this.events.emit('phase', phase);
-    if (!this.lanternsLit && this.day.t >= NIGHT_START) {
+    if (!this.lanternsLit && this.day.t >= DAY.lanterns) {
       this.lanternsLit = true;
       this.events.emit('lanternsOn');
     }
@@ -354,6 +353,7 @@ export class KitchenScene extends Phaser.Scene {
       const toY = tileCenter(Phaser.Math.Between(...rows)) + jitter();
       coin.tween = this.tweens.addCounter({
         from: 0, to: 1, duration: 500, delay: i * 120,
+        onStart: () => this.events.emit('coinDrop', coin), // one toss per coin, as each one takes off
         onUpdate: (tw) => {
           const p = tw.getValue();
           coin.setPosition(lerp(fromX, toX, p), lerp(fromY, toY, p) - Math.sin(Math.PI * p) * TILE);
@@ -364,7 +364,6 @@ export class KitchenScene extends Phaser.Scene {
           this.events.emit('coinLand', coin);
         },
       });
-      this.events.emit('coinDrop', coin);
     }
   }
 
@@ -394,23 +393,37 @@ export class KitchenScene extends Phaser.Scene {
       if (!orders.some((c) => c.recipe === held.dish.recipe)) return t('next.notOrdered');
       return t('next.serveDish', { dish: dishName(held.dish) });
     }
-    const cookers = [...this.stations.values()].filter((s) => isCooker(s) && s.contents.length);
-    const ready = cookers.find((s) => s.progress >= 1);
-    const upper = (s) => t(`station.${s.type}`).toUpperCase();
     if (held) return t(`next.${NEXT_FOR_INGREDIENT[ingredientKey(held)] ?? 'toPot'}`);
-    // A recipe half in a pot: say what is still missing (taking it out now would make a mystery stew).
-    for (const s of cookers) {
-      const { recipe, missing } = cookerStatus(s);
-      if (recipe && missing.length) {
-        return t('next.missing', { station: upper(s), items: missing.map(keyName).join(' + '), dish: RECIPES[recipe].name });
-      }
-    }
+    const { ready, wanted, cooking, waiting } = this.cookerPlan();
+    const upper = (s) => t(`station.${s.type}`).toUpperCase();
+    // Finished food first: a guest may be waiting for it, and it frees the cooker.
     if (ready) return t('next.ready', { station: upper(ready) });
+    // Half of a recipe someone ordered: say what is still missing (taking it out now would make a mystery stew).
+    if (wanted) {
+      const { recipe, missing } = cookerStatus(wanted);
+      return t('next.missing', { station: upper(wanted), items: missing.map(keyName).join(' + '), dish: RECIPES[recipe].name });
+    }
     // Coins wait patiently on the floor: they never hide what a waiting guest needs.
     if (this.coins.length && !orders.length) return t('next.coins');
-    if (cookers.length) return t('next.cooking');
+    if (cooking) return t('next.cooking');
     if (orders.length) return t(`hint.${orders[0].recipe}`);
+    // Something nobody ordered waits in a cooker: only a light nudge (it can wait, or become a mystery stew).
+    if (waiting) return t('next.waiting', { station: upper(waiting) });
     return t('next.relax');
+  }
+
+  // Cookers that matter for the next step: the first finished one, the first waiting for the rest of a recipe
+  // somebody ordered, whether anything is cooking, and the first other waiting cooker (nobody ordered that).
+  cookerPlan() {
+    const cookers = [...this.stations.values()].filter((s) => isCooker(s) && s.contents.length);
+    const waiting = cookers.filter((s) => waitingFor(s));
+    const wanted = (s) => waitingFor(s) === 'missing' && this.orders.some((c) => c.recipe === cookerStatus(s).recipe);
+    return {
+      ready: cookers.find((s) => s.progress >= 1) ?? null,
+      wanted: waiting.find(wanted) ?? null,
+      cooking: cookers.some((s) => s.progress < 1 && !waiting.includes(s)),
+      waiting: waiting.find((s) => !wanted(s)) ?? null,
+    };
   }
 
   // The station the "Next:" hint is about (the guide arrow points at it), or null when the hint is not about one.
@@ -433,14 +446,11 @@ export class KitchenScene extends Phaser.Scene {
       if (key === 'cheese:chopped') return pot ?? (board.item ? null : board);
       return pot ?? find((s) => s.type === 'pot' && !s.contents.length);
     }
-    const cookers = all.filter((s) => isCooker(s) && s.contents.length);
-    for (const s of cookers) {
-      const { recipe, missing } = cookerStatus(s);
-      if (recipe && missing.length) return this.sourceOf(missing[0]);
-    }
-    const ready = cookers.find((s) => s.progress >= 1);
+    // Same order as nextStep().
+    const { ready, wanted, cooking } = this.cookerPlan();
     if (ready) return ready;
-    if (cookers.length || !orders.length) return null;
+    if (wanted) return this.sourceOf(cookerStatus(wanted).missing[0]);
+    if (cooking || !orders.length) return null;
     return this.sourceOf(RECIPES[orders[0].recipe].needs[0]);
   }
 
@@ -520,7 +530,7 @@ export class KitchenScene extends Phaser.Scene {
     const busy = { pot: false, fryer: false };
     for (const [st, view] of this.stationViews) {
       view.sync(st, time, this.mood.dark);
-      if (isCooker(st) && st.contents.length && st.progress < 1) busy[st.type] = true;
+      if (isCooker(st) && st.contents.length && st.progress < 1 && !waitingFor(st)) busy[st.type] = true;
     }
     for (const [type, [name, volume]] of Object.entries(COOK_LOOPS)) audio.loop(name, busy[type], volume);
 

@@ -1,7 +1,7 @@
 // How game state looks: items, stations, the chef, customers, small effects, text styles and draw order.
 // Almost everything is a frame of one self-made sheet, 'art' (assets/art/art.png, names in assets/art/frames.js).
-import { TILE, ART_SCALE, INGREDIENTS, RECIPES, MYSTERY, ASSEMBLIES, CHOPS_NEEDED, SPRITES, KITCHEN } from './data.js';
-import { matchRecipe, isCooker, cookerStatus } from './stations.js';
+import { TILE, ART_SCALE, INGREDIENTS, RECIPES, MYSTERY, ASSEMBLIES, CHOPS_NEEDED, SPRITES, KITCHEN, DECK } from './data.js';
+import { matchRecipe, isCooker, waitingFor } from './stations.js';
 import { ART_FRAMES } from '../assets/art/frames.js';
 
 export const ART = 'art';
@@ -281,6 +281,9 @@ export class StationView {
     const { contents } = station;
     const busy = contents.length > 0;
     const ready = busy && station.progress >= 1;
+    // A waiting cooker (half a recipe, one lone ingredient) sits still: no broth, no steam, just its icons above.
+    const waiting = busy && !!waitingFor(station);
+    const cooking = busy && !waiting;
     const recipe = busy ? matchRecipe(contents, station.type) : null;
     // Above the tile: the ingredients while cooking, the finished dish when ready.
     const arts = ready ? [dishArt({ recipe, cooked: true })] : contents.map(itemArt);
@@ -288,16 +291,16 @@ export class StationView {
     this.glow.setVisible(ready);
     if (ready) this.glow.setAlpha((0.8 + 0.2 * dark) * (0.8 + 0.2 * Math.sin(time / 260)));
     if (station.type === 'pot') {
-      this.overlay.setVisible(busy);
-      if (busy) this.overlay.setFrame(ART_FRAMES[(recipe ? RECIPES[recipe].fill : null) ?? 'potfill_broth']);
+      this.overlay.setVisible(cooking);
+      if (cooking) this.overlay.setFrame(ART_FRAMES[(recipe ? RECIPES[recipe].fill : null) ?? 'potfill_broth']);
     } else {
       // Fryer oil bubbles at ~3 fps while frying.
       this.overlay.setVisible(busy && !ready && Math.floor(time / 330) % 2 === 0).setFrame(ART_FRAMES.fryer_bubble);
     }
-    toggle(this.steam, busy && !ready);
+    toggle(this.steam, cooking && !ready);
     toggle(this.hearts, ready);
-    // Half a recipe waits for the rest without a bar (it only cooks once it is a whole recipe or a mystery mix).
-    return busy && !cookerStatus(station).missing.length ? station.progress : 0;
+    // A waiting cooker shows no bar (it only cooks once it is a whole recipe or a mystery mix).
+    return cooking ? station.progress : 0;
   }
 
   // Up to 2 icons per row, above the progress bar, over the water row under the HUD cards.
@@ -450,12 +453,12 @@ export class CustomerView {
 
     this.lineLeft -= dt;
     if (this.lineLeft <= 0) this.line = null;
-    // The order shows as soon as the guest starts walking in (the HUD card appears at the same time).
-    const order = (c.state === 'walking_in' || c.state === 'waiting') && !this.line;
+    // The order pops up once the guest has arrived at the window (the HUD card already shows it while they walk in).
+    const order = c.state === 'waiting' && !this.line;
     if (this.line) this.bubble.show(null, this.line);
     else if (order) this.bubble.show(dishArt({ recipe: c.recipe, cooked: true }), null);
     else this.bubble.hide();
-    // Kept on screen while a guest walks in or out past the right edge.
+    // A spoken line is kept on screen while a guest walks out past the right edge.
     this.bubble.setPosition(Math.min(x + px(6.5), this.scene.scale.width - 30 - this.bubble.w), feet - px(13));
   }
 
@@ -480,8 +483,11 @@ export class CustomerView {
   }
 }
 
-// Where a guest's feet touch the deck on row ty (sprites use origin 0.5, 1).
-export const customerFeet = (ty) => tileCenter(ty) + TILE * 0.44;
+// Where a guest's feet touch the deck on row ty (sprites use origin 0.5, 1). Guests are a whole tile tall, so the
+// rows above and below the middle spot stand a little further out (onto the deck margins), and stacked guests
+// never stand on each other's heads.
+const ROW_SPREAD = px(3);
+export const customerFeet = (ty) => tileCenter(ty) + TILE * 0.44 + (ty - DECK.spots[0].ty) * ROW_SPREAD;
 
 // Customer portrait frame (for cards and the diary).
 export const portraitArt = (id) => `${id}_front_0`;

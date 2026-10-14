@@ -23,6 +23,8 @@ const MIST_AREAS = [
   { left: 4, top: 10, right: 19, bottom: 11 }, // under the bottom panel
 ];
 const FIREFLIES = 10;
+const SUNSET_OVERLAY = 0.5; // the overlay copy of the wash, relative to the normal one (stronger looks flat and peach)
+const SUNSET_KITCHEN = 0.5; // how much of the wash is cut out over the lamplit kitchen
 const lerp = (a, b, p) => a + (b - a) * p;
 
 // Keyframes [t, ...] -> the two around t and how far between them (0..1).
@@ -38,6 +40,17 @@ const valueAt = (keys, t) => {
   return lerp(a[1], b[1], p);
 };
 
+// Cuts a box (tile units, inclusive) out of a canvas with a soft edge: a few nested boxes, each a bit stronger.
+// u = one tile in canvas pixels. Use with globalCompositeOperation 'destination-out'.
+function softBox(ctx, u, { left, top, right, bottom }, strength, feather = 0.6) {
+  const steps = 6;
+  for (let i = 0; i < steps; i++) {
+    const inset = (feather * (i - steps / 2)) / steps;
+    ctx.fillStyle = `rgba(0,0,0,${1 - (1 - strength) ** (1 / steps)})`;
+    ctx.fillRect((left + inset) * u, (top + inset) * u, (right + 1 - left - 2 * inset) * u, (bottom + 1 - top - 2 * inset) * u);
+  }
+}
+
 // Dark blue over the lake; the kitchen and the deck are cut out almost fully (warm and readable), lanterns
 // open soft round holes. Built once at 1/8 size (all edges come out soft), then stretched to full size.
 function bakeNightMask(scene) {
@@ -50,15 +63,7 @@ function bakeNightMask(scene) {
   ctx.fillRect(0, 0, w, h);
   ctx.globalCompositeOperation = 'destination-out';
   const u = TILE / MASK_SCALE; // one tile in mask pixels
-  // A box (tile units, inclusive) cut out with a soft edge: a few nested boxes, each a bit stronger.
-  const box = ({ left, top, right, bottom }, strength, feather = 0.6) => {
-    const steps = 6;
-    for (let i = 0; i < steps; i++) {
-      const inset = (feather * (i - steps / 2)) / steps;
-      ctx.fillStyle = `rgba(0,0,0,${1 - (1 - strength) ** (1 / steps)})`;
-      ctx.fillRect((left + inset) * u, (top + inset) * u, (right + 1 - left - 2 * inset) * u, (bottom + 1 - top - 2 * inset) * u);
-    }
-  };
+  const box = (area, strength, feather) => softBox(ctx, u, area, strength, feather);
   const hole = (x, y, r, strength) => {
     const g = ctx.createRadialGradient(x, y, 0, x, y, r);
     g.addColorStop(0, `rgba(0,0,0,${strength})`);
@@ -74,6 +79,20 @@ function bakeNightMask(scene) {
   for (const { tx, ty } of [...LANTERNS.posts, ...LANTERNS.walls]) hole(tileCenter(tx) / MASK_SCALE, tileCenter(ty) / MASK_SCALE, 2.6 * u, 0.6);
   tex.refresh();
   stretched(scene, NIGHT_MASK, tex.key, MAP_W, MAP_H);
+}
+
+// The golden-hour wash, stretched over the view; the lamplit kitchen keeps half its own colours (soft-edged cut-out).
+function bakeSunset(scene) {
+  const key = 'sunsetFull';
+  if (scene.textures.exists(key)) return key;
+  stretched(scene, key, 'sunset', MAP_W, VIEW_H);
+  const tex = scene.textures.get(key);
+  const ctx = tex.getContext();
+  ctx.globalCompositeOperation = 'destination-out';
+  softBox(ctx, TILE, { left: KITCHEN.left, top: KITCHEN.top - 1, right: KITCHEN.right, bottom: KITCHEN.bottom }, SUNSET_KITCHEN, 0.5);
+  ctx.globalCompositeOperation = 'source-over';
+  tex.refresh();
+  return key;
 }
 
 export class Mood {
@@ -92,7 +111,7 @@ export class Mood {
     }));
     // The golden hour: a rose-to-amber wash, plus the same wash in overlay mode, which warms the blue lake towards
     // rose and amber instead of greying it (Canvas supports overlay; WebGL just draws it as a second wash).
-    const sunset = stretched(scene, 'sunsetFull', 'sunset', MAP_W, VIEW_H);
+    const sunset = bakeSunset(scene);
     this.sunset = [0, 1].map((i) => layer(scene.add.image(0, 0, sunset).setOrigin(0).setAlpha(0)
       .setBlendMode(i ? Phaser.BlendModes.OVERLAY : Phaser.BlendModes.NORMAL)));
     this.night = layer(scene.add.image(0, 0, NIGHT_MASK).setOrigin(0).setAlpha(0));
@@ -184,7 +203,7 @@ export class Mood {
     });
   }
 
-  // Lanterns and string lights switch on (the scene emits lanternsOn when night starts).
+  // Lanterns and string lights switch on (the scene emits lanternsOn at dusk, DAY.lanterns).
   light() {
     if (this.lit) return;
     this.lit = true;
@@ -211,7 +230,7 @@ export class Mood {
       if (show) m.setPosition(x, 0).setAlpha(mist).setCrop(left, m.area.y, right - left, bottom - m.area.y);
     }
     const sunset = valueAt(DAY.sunset, t);
-    for (const wash of this.sunset) wash.setAlpha(sunset).setVisible(sunset > 0.005);
+    this.sunset.forEach((wash, i) => wash.setAlpha(sunset * (i ? SUNSET_OVERLAY : 1)).setVisible(sunset > 0.005));
     const night = valueAt(DAY.night, t);
     this.night.setAlpha(night).setVisible(night > 0.005);
     this.dark = Math.min(1, night / 0.6); // 0 by day .. 1 at night: the HUD and the done halo follow it
