@@ -1,6 +1,6 @@
 // How game state looks: items, stations, the chef, customers, small effects, text styles and draw order.
 // Almost everything is a frame of one self-made sheet, 'art' (assets/art/art.png, names in assets/art/frames.js).
-import { TILE, ART_SCALE, INGREDIENTS, RECIPES, MYSTERY, ASSEMBLIES, CHOPS_NEEDED, SPRITES } from './data.js';
+import { TILE, ART_SCALE, INGREDIENTS, RECIPES, MYSTERY, ASSEMBLIES, CHOPS_NEEDED, SPRITES, KITCHEN } from './data.js';
 import { matchRecipe, isCooker } from './stations.js';
 import { ART_FRAMES } from '../assets/art/frames.js';
 
@@ -19,7 +19,7 @@ export const INK = { fontFamily: FONT, fontSize: '26px', color: COLORS.ink };
 
 // Draw order, back to front.
 export const DEPTH = {
-  map: 0, glint: 1, stationItem: 10, steam: 11, shadow: 12, lantern: 13, customer: 14, coin: 16, chef: 20, held: 22,
+  map: 0, glint: 1, stationItem: 10, steam: 11, shadow: 12, lantern: 13, customer: 14, coin: 16, guide: 18, chef: 20, held: 22,
   highlight: 24, stationInfo: 26, fx: 30, daylight: 50, glow: 52, bubble: 60, label: 62, hud: 100,
 };
 
@@ -56,11 +56,34 @@ export function recipeArt(id) {
   return { ingredients, cooker: SPRITES[recipe.cooker], dish: recipe.art };
 }
 
+// Canvas mode pays for every scaled-up draw each frame, so big soft layers are stretched once into a texture
+// at their final size and then drawn 1:1 (cheap in both renderers).
+export function stretched(scene, key, src, w, h) {
+  if (!scene.textures.exists(key)) {
+    const tex = scene.textures.createCanvas(key, w, h);
+    const ctx = tex.getContext();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(scene.textures.get(src).getSourceImage(), 0, 0, w, h);
+    tex.refresh();
+  }
+  return key;
+}
+
 // Little bounce when something appears.
 export function pop(scene, obj, scale) {
   scene.tweens.killTweensOf(obj);
   obj.setScale(scale * 0.55);
   scene.tweens.add({ targets: obj, scale, duration: 240, ease: 'Back.easeOut' });
+}
+
+// A quick side-to-side tilt ("nope"). Only its own tween is restarted, other tweens on obj keep running.
+export function wiggle(scene, obj, degrees = 5) {
+  obj.wiggleTween?.stop();
+  obj.setAngle(0);
+  obj.wiggleTween = scene.tweens.add({
+    targets: obj, angle: { from: -degrees, to: degrees }, duration: 60, yoyo: true, repeat: 1, onComplete: () => obj.setAngle(0),
+  });
 }
 
 // One item drawn from the art sheet; pops when it changes.
@@ -107,11 +130,38 @@ export const fx = {
       s.once('animationcomplete', () => s.destroy());
     });
   },
+  // A small burst of pixel squares that arc up and tumble down (Shapes: plain colors work in Canvas, tint does not).
+  confetti(scene, x, y, colors, count = 22) {
+    for (let i = 0; i < count; i++) {
+      const size = px(i % 3 ? 1.5 : 2);
+      const bit = scene.add.rectangle(x, y, size, size, colors[i % colors.length]).setDepth(DEPTH.fx)
+        .setStrokeStyle(2, 0x3b2420, 0.35);
+      const vx = Phaser.Math.Between(-300, 300);
+      const vy = Phaser.Math.Between(-900, -560);
+      const spin = Phaser.Math.FloatBetween(-8, 8);
+      scene.tweens.addCounter({
+        from: 0, to: 1, duration: 1200, ease: 'Linear',
+        onUpdate: (tw) => {
+          const t = tw.getValue() * 1.2; // seconds
+          bit.setPosition(x + vx * t, y + vy * t + 900 * t * t).setRotation(spin * t).setAlpha(t < 0.85 ? 1 : (1.2 - t) / 0.35);
+        },
+        onComplete: () => bit.destroy(),
+      });
+    }
+  },
   text(scene, x, y, message, style = SMALL) {
     const label = scene.add.text(x, y, message, style).setOrigin(0.5, 1).setDepth(DEPTH.label);
     scene.tweens.add({ targets: label, y: y - px(10), alpha: 0, delay: 1300, duration: 700, onComplete: () => label.destroy() });
     return label;
   },
+};
+
+// Serve confetti colors, by recipe (and 'mystery').
+const CONFETTI = {
+  brigadeiro: [0x6b3e26, 0xe07a8f, 0xffd77a, 0xfff1c4],
+  baiao: [0xf3d77e, 0x9a4a36, 0x7fae4f, 0xfff1c4],
+  pastel: [0xf0c04a, 0xd98a3a, 0xfff1c4, 0xe07a8f],
+  mystery: [0x9a7ac0, 0x7fae4f, 0xe2c99a, 0xfff1c4],
 };
 
 // A cream speech bubble with a tail on its left. Shows a dish icon (order) or a short line. Hidden until show().
@@ -180,12 +230,24 @@ export class StationView {
     this.y = y;
     this.item = new ItemView(scene, x, y - px(1), DEPTH.stationItem);
     this.barWidth = TILE * 0.78;
-    const barY = y + TILE * 0.39;
+    // Just above the tile, so the chef standing below never covers it.
+    const barY = y - TILE / 2 - 6;
     this.barBack = scene.add.rectangle(x, barY, this.barWidth + 6, 16, 0x2b1d1a, 0.8).setDepth(DEPTH.stationInfo).setVisible(false);
     this.bar = scene.add.rectangle(x - this.barWidth / 2, barY, 0, 9, 0xf0c04a).setOrigin(0, 0.5).setDepth(DEPTH.stationInfo);
+    // Crates: a small picture of what is inside on the front plaque, readable from across the room.
+    if (station.type === 'crate') artImage(scene, x, y + px(5.5), INGREDIENTS[station.kind].art, 2).setDepth(DEPTH.stationItem);
     this.cooker = isCooker(station);
     if (!this.cooker) return;
     this.overlay = artImage(scene, x, y, 'potfill_broth').setDepth(DEPTH.stationItem).setVisible(false);
+    // A warm glow that breathes under a finished cooker until the food is plated.
+    // Two soft layers (one glow image alone is faint over the bright stove).
+    const glows = [TILE * 2, TILE * 1.3].map((d) => {
+      const size = Math.round(d);
+      return scene.add.image(x, y, stretched(scene, `glow${size}`, 'glow', size, size)).setDepth(DEPTH.stationItem - 1)
+        .setBlendMode(Phaser.BlendModes.ADD);
+    });
+    this.glow = scene.add.container(0, 0, glows).setDepth(DEPTH.stationItem - 1).setVisible(false);
+    scene.tweens.add({ targets: this.glow, alpha: { from: 1, to: 0.55 }, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.icons = [];
     this.iconsKey = '';
     this.steam = scene.add.particles(x, y - px(4.5), ART, {
@@ -197,6 +259,11 @@ export class StationView {
       frame: ART_FRAMES.steam_2, lifespan: 1800, speedY: { min: -px(9), max: -px(6.5) }, speedX: { min: -px(1.5), max: px(1.5) },
       scale: { start: 3.75, end: 5.25 }, alpha: { start: 0.9, end: 0 }, frequency: 1100, emitting: false,
     }).setDepth(DEPTH.steam);
+  }
+
+  // A small "nope" wiggle of what sits on the station (the scene wiggles the highlight around it).
+  wiggle() {
+    for (const obj of [this.item.image, ...(this.icons ?? [])]) wiggle(this.scene, obj, 8);
   }
 
   sync(station, time) {
@@ -219,7 +286,8 @@ export class StationView {
     const recipe = busy ? matchRecipe(contents, station.type) : null;
     // Above the tile: the ingredients while cooking, the finished dish when ready.
     const arts = ready ? [dishArt({ recipe, cooked: true })] : contents.map(itemArt);
-    this.layoutIcons(arts);
+    this.layoutIcons(arts, ready);
+    this.glow.setVisible(ready);
     if (station.type === 'pot') {
       this.overlay.setVisible(busy);
       if (busy) this.overlay.setFrame(ART_FRAMES[(recipe ? RECIPES[recipe].fill : null) ?? 'potfill_broth']);
@@ -232,13 +300,21 @@ export class StationView {
     return busy ? station.progress : 0;
   }
 
-  // Up to 2 icons per row, just above the tile, over the water row under the HUD cards.
-  layoutIcons(arts) {
+  // Up to 2 icons per row, above the progress bar, over the water row under the HUD cards.
+  // The finished dish shows bigger, with a springy pop.
+  layoutIcons(arts, ready) {
     const key = arts.join();
     if (key === this.iconsKey) return;
     this.iconsKey = key;
     for (const icon of this.icons) icon.destroy();
-    const top = this.y - TILE / 2;
+    const top = this.y - TILE / 2 - 14;
+    if (ready) {
+      const icon = artImage(this.scene, this.x, top - 34, arts[0], ICON_SCALE + 1).setDepth(DEPTH.stationInfo);
+      icon.setScale(1);
+      this.scene.tweens.add({ targets: icon, scale: ICON_SCALE + 1, duration: 420, ease: 'Back.easeOut', easeParams: [3] });
+      this.icons = [icon];
+      return;
+    }
     this.icons = arts.map((art, i) => {
       const rows = Math.ceil(arts.length / 2);
       const row = Math.floor(i / 2);
@@ -256,6 +332,36 @@ export class StationView {
 function toggle(emitter, on) {
   if (on && !emitter.emitting) emitter.start();
   else if (!on && emitter.emitting) emitter.stop();
+}
+
+// A soft gold arrow on the floor in front of a station, pointing at it and bobbing towards it. Fades in and out.
+export class GuideArrow {
+  constructor(scene) {
+    this.scene = scene;
+    const g = scene.add.graphics().setDepth(DEPTH.guide).setAlpha(0);
+    // Drawn pointing up, tip at (0, -24).
+    const arrow = [0, -24, 26, 5, 10, 5, 10, 24, -10, 24, -10, 5, -26, 5];
+    const points = (dx, dy) => arrow.reduce((list, v, i) => (i % 2 ? list : [...list, { x: v + dx, y: arrow[i + 1] + dy }]), []);
+    g.fillStyle(0x1b1210, 0.25).fillPoints(points(2, 4), true);
+    g.fillStyle(0xffd36b).fillPoints(points(0, 0), true);
+    g.lineStyle(4, 0x6e4a32).strokePoints(points(0, 0), true);
+    this.g = g;
+    this.station = null;
+  }
+
+  // station: where to point (null hides it).
+  update(station, time) {
+    const { g } = this;
+    if (station) this.station = station;
+    g.setAlpha(Phaser.Math.Linear(g.alpha, station ? 0.95 : 0, 0.12));
+    if (!this.station || g.alpha < 0.01) return;
+    const { tx, ty } = this.station;
+    // Point from the room's side of the station: stations stand on the room's walls.
+    const [dx, dy] = ty === KITCHEN.top ? [0, -1] : ty === KITCHEN.bottom ? [0, 1] : tx === KITCHEN.left ? [-1, 0] : [1, 0];
+    const bob = 8 * Math.sin(time / 160);
+    const away = TILE * 0.86 - bob;
+    g.setPosition(tileCenter(tx) - dx * away, tileCenter(ty) - dy * away).setRotation(Math.atan2(dx, -dy));
+  }
 }
 
 // The chef: 2-frame walk in 3 directions (side frames face right, flipped for left), a soft shadow,
@@ -339,7 +445,11 @@ export class CustomerView {
     this.served = true;
     const happy = c.mood !== 'surprised';
     this.body.stop().setFrame(ART_FRAMES[happy ? `${this.id}_happy` : `${this.id}_front_0`]);
-    this.scene.tweens.add({ targets: this, lift: px(5.5), duration: 160, yoyo: true, repeat: 1, ease: 'Sine.easeOut' });
+    // Squash, then spring up into the hop.
+    this.body.setScale(S * 1.25, S * 0.75);
+    this.scene.tweens.add({ targets: this.body, scaleX: S, scaleY: S, duration: 380, ease: 'Back.easeOut', easeParams: [3] });
+    this.scene.tweens.add({ targets: this, lift: px(5.5), duration: 160, yoyo: true, repeat: 1, ease: 'Sine.easeOut', delay: 60 });
+    fx.confetti(this.scene, x, feet - px(12), CONFETTI[c.dish.recipe ?? 'mystery']);
     if (happy) {
       fx.float(this.scene, x, feet - px(18), 'heart', { scale: 5, rise: px(17.5), duration: 1400 });
       fx.float(this.scene, x - px(4.5), feet - px(15), 'heart', { scale: 3, rise: px(15), duration: 1300, delay: 250 });

@@ -48,7 +48,7 @@ export class TitleScene extends Phaser.Scene {
     // Small notes over the lake, top corners.
     const note = { ...TEXT, fontSize: '28px', color: COLORS.cream, strokeThickness: 6 };
     if (save.day > 1 || save.coins > 0) {
-      hud(this.add.text(this.scale.width - 32, 40, t('title.save', { day: save.day, coins: save.coins }), note).setOrigin(1, 0.5));
+      hud(this.add.text(this.scale.width - 32, 40, t(save.coins === 1 ? 'title.saveOne' : 'title.save', { day: save.day, coins: save.coins }), note).setOrigin(1, 0.5));
     }
     hud(this.add.text(32, 40, t('title.mute'), { ...note, fontSize: '24px', color: COLORS.muted }).setOrigin(0, 0.5));
 

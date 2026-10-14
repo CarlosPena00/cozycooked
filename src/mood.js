@@ -2,7 +2,7 @@
 // wash, and a blue night that keeps the kitchen warm and readable (only the far lake gets dim), with lanterns,
 // string lights on the deck and fireflies.
 import { TILE, ART_SCALE, MAP, DAY, LANTERNS, KITCHEN, DECK } from './data.js';
-import { DEPTH, tileCenter, artFrame, artImage } from './views.js';
+import { DEPTH, tileCenter, artFrame, artImage, stretched } from './views.js';
 
 const NIGHT_MASK = 'nightMask';
 const MASK_SCALE = 8; // the mask is drawn small and scaled up (smooth gradients are cheap that way)
@@ -25,20 +25,6 @@ function around(keys, t) {
   const b = keys[i];
   return [a, b, (t - a[0]) / (b[0] - a[0])];
 }
-// Canvas mode pays for every scaled-up draw each frame, so big soft layers are stretched once into a texture
-// at their final size and then drawn 1:1 (cheap in both renderers).
-function stretched(scene, key, src, w, h) {
-  if (!scene.textures.exists(key)) {
-    const tex = scene.textures.createCanvas(key, w, h);
-    const ctx = tex.getContext();
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(scene.textures.get(src).getSourceImage(), 0, 0, w, h);
-    tex.refresh();
-  }
-  return key;
-}
-
 const valueAt = (keys, t) => {
   const [a, b, p] = around(keys, t);
   return lerp(a[1], b[1], p);

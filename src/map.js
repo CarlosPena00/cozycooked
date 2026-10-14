@@ -3,7 +3,7 @@
 // 16 px per tile, one per water frame, and shown at ART_SCALE. Swapping them animates the water for the cost of
 // one image per frame, the same in Canvas and WebGL.
 import { TILE, MAP, STATIONS, CRATES, TERRAIN, SPRITES, DECOR, KITCHEN, DECK } from './data.js';
-import { DEPTH, tileCenter } from './views.js';
+import { DEPTH } from './views.js';
 import { ART_FRAMES, WALL_TALL_FRAMES } from '../assets/art/frames.js';
 
 export const MAP_TEXTURES = ['map0', 'map1', 'map2']; // one per water frame
@@ -145,9 +145,41 @@ export function buildKitchen(scene) {
   MAP.forEach((row, ty) => [...row].forEach((ch, tx) => {
     const kind = CRATES[ch] ?? null;
     const def = STATIONS[ch];
-    // The kitchen is walled in, so only walls and stations need collision.
-    if (def || kind || TERRAIN[ch] === 'wall') walls.add(scene.add.zone(tileCenter(tx), tileCenter(ty), TILE, TILE));
     if (def || kind) stations.set(`${tx},${ty}`, newStation(def?.type ?? 'crate', tx, ty, kind));
   }));
+  for (const { x, y, w, h } of solidRects()) {
+    walls.add(scene.add.zone(x * TILE + (w * TILE) / 2, y * TILE + (h * TILE) / 2, w * TILE, h * TILE));
+  }
   return { ground, walls, stations };
+}
+
+// The kitchen is walled in, so only walls and stations need collision. Solid tiles are merged into a few big
+// rectangles (row runs, then equal runs stacked down): with one box per tile, sliding diagonally along a wall
+// caught on the seams between tiles. -> [{ x, y, w, h }] in tiles.
+function solidRects() {
+  const solid = (ch) => !!(STATIONS[ch] || CRATES[ch] || TERRAIN[ch] === 'wall');
+  const open = {}; // rectangles still growing down, by "x,w"
+  const done = [];
+  MAP.forEach((row, ty) => {
+    const runs = [];
+    for (let tx = 0; tx < W; tx++) {
+      if (!solid(row[tx])) continue;
+      const last = runs[runs.length - 1];
+      if (last && last.x + last.w === tx) last.w += 1;
+      else runs.push({ x: tx, w: 1 });
+    }
+    const keys = new Set(runs.map((r) => `${r.x},${r.w}`));
+    for (const [key, rect] of Object.entries(open)) {
+      if (!keys.has(key)) {
+        done.push(rect);
+        delete open[key];
+      }
+    }
+    for (const r of runs) {
+      const key = `${r.x},${r.w}`;
+      if (open[key]) open[key].h += 1;
+      else open[key] = { x: r.x, y: ty, w: r.w, h: 1 };
+    }
+  });
+  return [...done, ...Object.values(open)];
 }

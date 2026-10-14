@@ -79,7 +79,7 @@ export const audio = {
   // Plays the sound mapped to each gameplay event a scene emits (EVENT_SOUNDS in data.js).
   // Listeners are removed when the scene shuts down (scene restarts keep the same emitter).
   bind(scene) {
-    const handlers = Object.entries(EVENT_SOUNDS).map(([event, [name, volume]]) => [event, () => audio.play(name, { volume })]);
+    const handlers = Object.entries(EVENT_SOUNDS).map(([event, [name, volume, rate = 1]]) => [event, () => audio.play(name, { volume, rate })]);
     for (const [event, fn] of handlers) scene.events.on(event, fn);
     scene.events.once('shutdown', () => {
       for (const [event, fn] of handlers) scene.events.off(event, fn);

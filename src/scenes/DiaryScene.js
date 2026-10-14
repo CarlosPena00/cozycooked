@@ -17,7 +17,9 @@ export class DiaryScene extends Phaser.Scene {
   // summary: { day, guests: [{ id, recipe, mood, dish }], coinsToday, coinsTotal }
   create(summary) {
     const { day, guests, coinsToday, coinsTotal } = summary;
-    writeSave({ day: day + 1, coins: coinsTotal });
+    // Guests nobody served come back first tomorrow, with the same order (the diary promises it).
+    const returning = guests.filter((g) => !g.mood).map(({ id, recipe }) => ({ id, recipe }));
+    writeSave({ day: day + 1, coins: coinsTotal, returning });
 
     const served = guests.filter((g) => g.mood);
     this.page();

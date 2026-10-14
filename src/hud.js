@@ -9,6 +9,7 @@ const CARD = { x: 16, y: 16, w: 356, h: 112, gap: 12 };
 const CLOCK = { x: 1654, y: 16, w: 250, h: 112 };
 const BOTTOM = { x: 16, y: 970, w: 1236, h: 98 };
 const COINS = { x: 1664, y: 970, w: 240, h: 84 };
+const COIN_TICK_MS = 110;
 
 // A rounded panel with a soft drop shadow. style: 'paper' (cream, ink text) or 'wood' (dark, cream text).
 export function panel(scene, x, y, w, h, style = 'paper') {
@@ -46,7 +47,8 @@ export class Hud {
     const coinY = COINS.y + COINS.h / 2;
     this.coinIcon = add(scene.add.sprite(COINS.x + 52, coinY, ART, artFrame('coin_0')).setScale(3).play('coin'));
     this.coinsText = add(scene.add.text(COINS.x + 92, coinY, '', { ...TEXT, fontSize: '38px', fontStyle: '600', color: COLORS.gold }).setOrigin(0, 0.5));
-    this.coinsShown = null;
+    this.coinsShown = null; // counts up one coin at a time towards the wallet
+    this.coinTickAt = 0;
     add(scene.add.text(BOTTOM.x + BOTTOM.w - 24, BOTTOM.y + 71, t('hud.controls'), { ...TEXT, fontSize: '22px', color: '#b8a48c', strokeThickness: 0 }).setOrigin(1, 0.5));
     this.muteText = add(scene.add.text(COINS.x + COINS.w / 2, COINS.y - 8, t('hud.muted'), { ...SMALL, color: COLORS.muted }).setOrigin(0.5, 1));
 
@@ -58,11 +60,7 @@ export class Hud {
     this.renderOrders(orders);
     this.nextText.setText(t('hud.next', { text: next }));
     this.renderHeld(held);
-    if (coins !== this.coinsShown) {
-      if (this.coinsShown !== null) pop(this.scene, this.coinIcon, 3);
-      this.coinsShown = coins;
-      this.coinsText.setText(String(coins));
-    }
+    this.countCoins(coins);
     this.muteText.setVisible(muted);
     this.dayText.setText(t('hud.day', { day }));
     this.phaseText.setText(t(`hud.phase.${phase}`));
@@ -70,6 +68,20 @@ export class Hud {
     this.sun.setPosition(this.arc.x + Math.cos(angle) * this.arc.r, this.arc.y + Math.sin(angle) * this.arc.r);
     this.sun.setFillStyle(night ? 0xf3f0ff : 0xffc83d).setStrokeStyle(4, night ? 0x8a8fc0 : 0xc9702a);
     this.label.update(label);
+  }
+
+  // The coin counter ticks up one by one (a small pop each), so a serve feels like a little payday.
+  countCoins(coins) {
+    const now = this.scene.time.now;
+    if (this.coinsShown === null) this.coinsShown = coins;
+    else if (coins !== this.coinsShown && now >= this.coinTickAt) {
+      this.coinsShown += Math.sign(coins - this.coinsShown);
+      this.coinTickAt = now + COIN_TICK_MS;
+      pop(this.scene, this.coinIcon, 3);
+      this.coinsText.setScale(1.3);
+      this.scene.tweens.add({ targets: this.coinsText, scale: 1, duration: 200, ease: 'Quad.easeOut' });
+    }
+    this.coinsText.setText(String(this.coinsShown));
   }
 
   renderHeld(held) {

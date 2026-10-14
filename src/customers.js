@@ -22,12 +22,14 @@ export function moodFor(customer, dish) {
 }
 
 export class Customers {
-  constructor(dayNumber, emit = () => {}) {
+  // returning: guests left unserved yesterday ([{ id, recipe }]); they come first, before anyone new.
+  constructor(dayNumber, emit = () => {}, returning = []) {
     this.dayNumber = dayNumber;
     this.emit = emit;
     this.list = []; // on the deck now, arrival order
     this.log = []; // every guest of the day (same objects), for the diary
-    this.scriptIndex = dayNumber === 1 ? 0 : DAY.script.length;
+    this.script = dayNumber === 1 ? DAY.script : returning;
+    this.scriptIndex = 0;
     this.closed = false;
     this.t = 0;
     this.changed(0);
@@ -86,8 +88,8 @@ export class Customers {
 
   nextGuest(t) {
     const onDeck = (id) => this.list.some((c) => c.id === id);
-    if (this.scriptIndex < DAY.script.length) {
-      const scripted = DAY.script[this.scriptIndex];
+    if (this.scriptIndex < this.script.length) {
+      const scripted = this.script[this.scriptIndex];
       if (onDeck(scripted.id)) return null;
       this.scriptIndex += 1;
       return scripted;

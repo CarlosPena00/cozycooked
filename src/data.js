@@ -58,9 +58,9 @@ const sound = (name) => [`assets/audio/${name}.ogg`, `assets/audio/${name}.mp3`]
 export const SOUNDS = Object.fromEntries(
   ['music', 'chop', 'boil', 'sizzle', 'plate', 'coin', 'pickup', 'serve', 'click'].map((name) => [name, sound(name)]),
 );
-// Which sound each gameplay event plays (see the event list in KitchenScene): event -> [sound, volume].
+// Which sound each gameplay event plays (see the event list in KitchenScene): event -> [sound, volume, rate?].
 export const EVENT_SOUNDS = {
-  interact: ['click', 0.35], chop: ['chop', 0.45], cookerDone: ['pickup', 0.5], fryerDone: ['pickup', 0.5],
+  interact: ['click', 0.35], nope: ['click', 0.22, 0.55], chop: ['chop', 0.45], cookerDone: ['pickup', 0.5], fryerDone: ['pickup', 0.5],
   plate: ['plate', 0.5], serve: ['serve', 0.45], coinLand: ['coin', 0.3], coinPick: ['pickup', 0.35],
 };
 // Soft loops while something cooks: cooker type -> [sound, volume]. The loop files are quiet (mean about -29 dBFS),
@@ -90,9 +90,11 @@ export const INGREDIENTS = {
 
 // Pot and fryer share one code path. Reason/action keys point into STRINGS.
 export const COOKERS = {
-  pot: { capacity: 4, seconds: 6, accepts: 'any', add: 'addPot', full: 'potFull', refuse: null, doneEvent: 'cookerDone' },
-  fryer: { capacity: 1, seconds: 4, accepts: ['pastel'], add: 'addFryer', full: 'fryerBusy', refuse: 'fryerOnly', doneEvent: 'fryerDone' },
+  pot: { capacity: 4, seconds: 6, accepts: 'any', add: 'addPot', full: 'potFull', refuse: null, empty: 'emptyPot', doneEvent: 'cookerDone' },
+  fryer: { capacity: 1, seconds: 4, accepts: ['pastel'], add: 'addFryer', full: 'fryerBusy', refuse: 'fryerOnly', empty: 'emptyFryer', doneEvent: 'fryerDone' },
 };
+// Seconds after the last ingredient goes in before the food can be taken out (no accidental double-E plating).
+export const COOK_GRACE = 0.4;
 
 // Ingredient keys are "kind" or "kind:chopped". Exact match only; anything else from a pot is a mystery stew.
 export const RECIPES = {
@@ -218,6 +220,7 @@ export const STRINGS = {
     subtitle: 'a cozy kitchen by the lake',
     press: 'Press any key',
     save: 'Day {day} - {coins} coins',
+    saveOne: 'Day {day} - 1 coin',
     mute: 'M: sound on/off',
   },
   hud: {
@@ -258,9 +261,16 @@ export const STRINGS = {
     handsFull: 'hands full - set it on a counter first',
     dishInHand: 'one dish at a time - serve this one first',
     missing: 'not finished yet - add the rest of the recipe',
-    nobody: 'Nobody is waiting yet. They will come!',
-    needDish: 'Dishes go here - take one from a POT or FRYER.',
+    nobody: 'nobody is waiting yet',
+    needDish: 'bring a dish from a pot or fryer',
     closed: 'closed for today - good night!',
+    justAdded: 'it just went in',
+    potIngredients: 'take the dish to a window or counter',
+    emptyPot: 'add ingredients here',
+    emptyFryer: 'fry a raw pastel here',
+    emptyBoard: 'put cheese here to chop it',
+    emptyCounter: 'set anything down here',
+    emptyBin: 'bring something to throw away',
   },
   next: {
     night: 'The day is done. Good night, chef!',

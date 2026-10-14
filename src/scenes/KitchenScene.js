@@ -3,10 +3,10 @@
 // Gameplay events (this.events), for juice and audio:
 //   interact (station, action)   chop (station)   cookerAdd (station)   cookerDone (station)   fryerDone (station)
 //   plate (station)   assemble (station)   bin (station)   serve (customer, mood)   coinDrop (coin)   coinLand (coin)
-//   coinPick (coin)   phase (phaseId)   lanternsOn ()   customer (event, customer, extra)
+//   coinPick (coin)   phase (phaseId)   lanternsOn ()   customer (event, customer, extra)   nope (station): E did nothing
 import {
-  TILE, ART_SCALE, SPEED, CHOPS_NEEDED, COIN_PICK_RADIUS, PLAYER_START, INGREDIENTS, COOKERS, COOK_LOOPS, DAY, DECK,
-  KITCHEN, MAP, NEXT_FOR_INGREDIENT, RECIPES,
+  TILE, ART_SCALE, SPEED, CHOPS_NEEDED, COIN_PICK_RADIUS, PLAYER_START, INGREDIENTS, COOKERS, COOK_LOOPS, COOK_GRACE,
+  DAY, DECK, KITCHEN, MAP, NEXT_FOR_INGREDIENT, RECIPES,
 } from '../data.js';
 import { resolve, cook, isCooker, ingredientKey, cookerStatus } from '../stations.js';
 import { Day } from '../day.js';
@@ -18,7 +18,7 @@ import { audio } from '../audio.js';
 import { loadSave } from '../save.js';
 import { t, itemName, dishName, stationName, keyName } from '../text.js';
 import {
-  ART, SMALL, DEPTH, tileCenter, artFrame, itemArt, fx, StationView, CustomerView, ChefView,
+  ART, DEPTH, tileCenter, artFrame, itemArt, fx, wiggle, StationView, CustomerView, ChefView, GuideArrow,
 } from '../views.js';
 
 // Which extra event each action emits (besides `interact`).
@@ -32,8 +32,13 @@ const lerp = (a, b, p) => a + (b - a) * p;
 // Labels and floating lines stay over the kitchen (walls included), never over the deck or the lake.
 const KITCHEN_PX = { left: KITCHEN.left * TILE, right: KITCHEN.right * TILE };
 const BODY = TILE * 0.6; // the chef's collision box: smaller than a tile so corners are forgiving
-// ms without the action label after a happy moment (serve, plate), so no refusal pops up right after it.
-const QUIET_AFTER = { serve: 1500, plate: 1000, plateEarly: 1000, plateMystery: 1000 };
+// ms without the action label after a happy moment (serve, plate), so no refusal pops up right after it,
+// and while fresh food settles in a cooker (COOK_GRACE), so the label does not flicker through "it just went in".
+const QUIET_AFTER = {
+  serve: 1500, plate: 1000, plateEarly: 1000, plateMystery: 1000, addPot: COOK_GRACE * 1000, addFryer: COOK_GRACE * 1000,
+};
+const FLASH_MS = 1800; // how long the reason stays in the label after E did nothing
+const GUIDE_DAYS = 1; // days with the guide arrow
 const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export class KitchenScene extends Phaser.Scene {
@@ -64,7 +69,7 @@ export class KitchenScene extends Phaser.Scene {
     for (const st of stations.values()) this.stationViews.set(st, new StationView(this, st));
 
     this.day = new Day(this.dayNumber);
-    this.customers = new Customers(this.dayNumber, (event, c, extra) => this.onCustomer(event, c, extra));
+    this.customers = new Customers(this.dayNumber, (event, c, extra) => this.onCustomer(event, c, extra), loadSave().returning);
 
     this.buildPlayer();
     this.mood = new Mood(this);
@@ -117,6 +122,9 @@ export class KitchenScene extends Phaser.Scene {
     this.tweens.add({ targets: this.highlight, alpha: 0.6, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.highlightAt = null;
     this.quietUntil = 0;
+    // Day 1: a soft bouncing arrow over the station the "Next:" hint talks about.
+    this.guide = this.dayNumber <= GUIDE_DAYS ? new GuideArrow(this) : null;
+    this.flash = null; // { station, reason, until }: the reason shown after E did nothing
   }
 
   // Cozy feedback on gameplay events. Handlers are removed on shutdown (scene restarts keep the emitter).
@@ -124,6 +132,10 @@ export class KitchenScene extends Phaser.Scene {
     const at = (st) => [tileCenter(st.tx), tileCenter(st.ty)];
     const handlers = {
       interact: () => this.chef.squash(),
+      nope: (st) => {
+        this.stationViews.get(st).wiggle();
+        wiggle(this, this.highlight, 5);
+      },
       chop: (st) => {
         const { image } = this.stationViews.get(st).item;
         this.tweens.add({ targets: image, scaleY: image.scaleX * 0.77, duration: 70, yoyo: true });
@@ -230,6 +242,13 @@ export class KitchenScene extends Phaser.Scene {
     const slide = this.cornerSlide(dx, dy, dt);
     if (dx && !dy) v.y = slide;
     if (dy && !dx) v.x = slide;
+    // Diagonal into a wall: slide along it at full speed instead of the diagonal's slower share.
+    if (dx && dy) {
+      const wallX = this.against(dx, 0);
+      const wallY = this.against(0, dy);
+      if (wallX && !wallY) v.set(0, dy * SPEED);
+      if (wallY && !wallX) v.set(dx * SPEED, 0);
+    }
     this.player.body.setVelocity(v.x, v.y);
     if (dx || dy) this.facing = { x: dx, y: dy };
   }
@@ -247,6 +266,18 @@ export class KitchenScene extends Phaser.Scene {
     if (open.length !== 1) return 0; // both open (no corner) or both blocked (a wall ahead)
     const offset = tileCenter(open[0]) - across;
     return Math.sign(offset) * Math.min(SPEED, Math.abs(offset) / Math.max(dt, 1 / 120));
+  }
+
+  // Is the chef's body touching something solid on its (dx, dy) side (one axis at a time)?
+  against(dx, dy) {
+    const b = this.player.body;
+    const edge = dx > 0 ? b.right + 1 : dx < 0 ? b.left - 1 : dy > 0 ? b.bottom + 1 : b.top - 1;
+    const [from, to] = dx ? [b.top, b.bottom - 1] : [b.left, b.right - 1];
+    const cell = Math.floor(edge / TILE);
+    for (let t = Math.floor(from / TILE); t <= Math.floor(to / TILE); t++) {
+      if (dx ? this.solid(cell, t) : this.solid(t, cell)) return true;
+    }
+    return false;
   }
 
   // Is the tile a wall or a station (anything the chef collides with)?
@@ -276,10 +307,12 @@ export class KitchenScene extends Phaser.Scene {
   use(station) {
     const res = resolve(station, this.held, this.context());
     if (!res.action) {
-      // The serve window explains itself on press (the prompt line already shows other reasons).
-      if (station.type === 'serve' && res.reason) this.say(station, t(`reason.${res.reason}`));
+      // A gentle "nope": the station wiggles, a soft click, and the reason stays in the label for a moment.
+      this.flash = res.reason ? { station, reason: res.reason, until: this.time.now + FLASH_MS } : null;
+      this.events.emit('nope', station);
       return;
     }
+    this.flash = null;
     this.events.emit('interact', station, res.action);
     if (res.action === 'serve') {
       this.serve(station);
@@ -299,13 +332,6 @@ export class KitchenScene extends Phaser.Scene {
     result.customer.view.say(result.line, DECK.reactSeconds);
     this.events.emit('serve', result.customer, result.mood);
     this.dropCoins(result.customer, result.coins, window.ty);
-  }
-
-  // A short floating line next to a station, over the kitchen (clamped inside the kitchen box).
-  say(station, message) {
-    const label = fx.text(this, 0, tileCenter(station.ty) - TILE / 2, message, { ...SMALL, fontSize: '28px' });
-    const half = label.width / 2;
-    label.x = Phaser.Math.Clamp(tileCenter(station.tx) - TILE * 2.5, KITCHEN_PX.left + half, KITCHEN_PX.right - half);
   }
 
   // A spinning coin.
@@ -380,10 +406,52 @@ export class KitchenScene extends Phaser.Scene {
       }
     }
     if (ready) return t('next.ready', { station: upper(ready) });
-    if (this.coins.length) return t('next.coins');
+    // Coins wait patiently on the floor: they never hide what a waiting guest needs.
+    if (this.coins.length && !orders.length) return t('next.coins');
     if (cookers.length) return t('next.cooking');
     if (orders.length) return t(`hint.${orders[0].recipe}`);
     return t('next.relax');
+  }
+
+  // The station the "Next:" hint is about (the guide arrow points at it), or null when the hint is not about one.
+  guideStation() {
+    const { held, orders } = this;
+    if (this.closing) return null;
+    const all = [...this.stations.values()];
+    const find = (fn) => all.find(fn) ?? null;
+    const board = find((s) => s.type === 'board');
+    if (held?.dish) {
+      const c = orders.find((o) => o.state === 'waiting' && o.recipe === held.dish.recipe);
+      return c ? this.stations.get(`${c.spot.tx - 1},${c.spot.ty}`) ?? null : null;
+    }
+    if (held) {
+      const key = ingredientKey(held);
+      if (key === 'cheese') return board.item ? null : board;
+      if (key === 'dough') return find((s) => s.item && ingredientKey(s.item) === 'cheese:chopped');
+      if (key === 'pastel') return find((s) => s.type === 'fryer' && !s.contents.length);
+      const pot = find((s) => s.type === 'pot' && s.contents.length && cookerStatus(s).missing.includes(key));
+      if (key === 'cheese:chopped') return pot ?? (board.item ? null : board);
+      return pot ?? find((s) => s.type === 'pot' && !s.contents.length);
+    }
+    const cookers = all.filter((s) => isCooker(s) && s.contents.length);
+    for (const s of cookers) {
+      const { recipe, missing } = cookerStatus(s);
+      if (recipe && missing.length) return this.sourceOf(missing[0]);
+    }
+    const ready = cookers.find((s) => s.progress >= 1);
+    if (ready) return ready;
+    if (cookers.length || !orders.length) return null;
+    return this.sourceOf(RECIPES[orders[0].recipe].needs[0]);
+  }
+
+  // Where to start getting an ingredient key with free hands: a station already holding it (or a step of it), else its crate.
+  sourceOf(key) {
+    const all = [...this.stations.values()];
+    const holding = (k) => all.find((s) => s.item && ingredientKey(s.item) === k);
+    const crate = (kind) => all.find((s) => s.type === 'crate' && s.kind === kind);
+    if (key === 'pastel') return holding('pastel') ?? (holding('cheese:chopped') ? crate('dough') : this.sourceOf('cheese:chopped'));
+    if (key === 'cheese:chopped') return holding('cheese:chopped') ?? holding('cheese') ?? crate('cheese');
+    return crate(key.split(':')[0]) ?? null;
   }
 
   // Debug only (QA scripts read it; the game shows actionLabel instead):
@@ -409,10 +477,14 @@ export class KitchenScene extends Phaser.Scene {
   // or above the head when the station is below (so it never hides the station).
   actionLabel() {
     const { target, held } = this;
-    if (!target || this.time.now < this.quietUntil) return null;
+    if (!target) return null;
     const res = resolve(target, held, this.context());
+    // Right after E did nothing here, the reason shows (while it is still the reason), even in a quiet moment.
+    const { flash } = this;
+    const flashing = flash && flash.station === target && flash.reason === res.reason && this.time.now < flash.until;
+    if (!flashing && this.time.now < this.quietUntil) return null;
     // Free hands at a serve window: stay quiet while walking past (the window explains itself on E, see use()).
-    if (target.type === 'serve' && !held && !res.action) return null;
+    if (target.type === 'serve' && !held && !res.action && !flashing) return null;
     let text;
     if (res.action) {
       const item = res.action === 'take' ? INGREDIENTS[target.kind].name : held && itemName(held);
@@ -451,6 +523,10 @@ export class KitchenScene extends Phaser.Scene {
       if (isCooker(st) && st.contents.length && st.progress < 1) busy[st.type] = true;
     }
     for (const [type, [name, volume]] of Object.entries(COOK_LOOPS)) audio.loop(name, busy[type], volume);
+
+    // The arrow rests while the chef already faces that station (the highlight shows it).
+    const guide = this.guideStation();
+    this.guide?.update(guide !== this.target ? guide : null, time);
 
     this.applyDaylight(time);
 

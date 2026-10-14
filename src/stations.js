@@ -1,6 +1,6 @@
 // The single-button rule, as pure logic (no Phaser). See SPEC section 2.
 // resolve() decides what E would do; the prompt and the E key both use it, so the prompt never lies.
-import { INGREDIENTS, RECIPES, ASSEMBLIES, COOKERS, CHOPS_NEEDED } from './data.js';
+import { INGREDIENTS, RECIPES, ASSEMBLIES, COOKERS, CHOPS_NEEDED, COOK_GRACE } from './data.js';
 
 export const newIngredient = (kind) => ({ type: 'ingredient', kind, chopped: false });
 // A dish is always on a plate: plates are implicit (E on a cooker with free hands takes the food out, plated).
@@ -73,7 +73,7 @@ function crate(station, held) {
 
 // The bin takes anything held (an ingredient or a whole dish); hands are free afterwards.
 function bin(station, held) {
-  return held ? act('throwAway', () => null) : NOTHING;
+  return held ? act('throwAway', () => null) : refuse('emptyBin');
 }
 
 // Counters hold anything; boards hold ingredients and chop cheese. Both assemble and swap.
@@ -105,7 +105,7 @@ function holder(station, held) {
   if (!held && item) return place('pickUp', item);
   if (held && !item) return place(board ? 'putOnBoard' : 'putDown', null);
   if (held && item) return place('swap', item);
-  return NOTHING;
+  return refuse(board ? 'emptyBoard' : 'emptyCounter');
 }
 
 function cooker(station, held) {
@@ -114,17 +114,21 @@ function cooker(station, held) {
   if (held?.type === 'ingredient') {
     if (def.accepts !== 'any' && !def.accepts.includes(ingredientKey(held))) return refuse(def.refuse);
     if (contents.length >= def.capacity) return refuse(def.full);
+    // Raw cheese into a pot whose recipe wants it chopped would only make a mystery stew by accident.
+    if (!held.chopped && cookerStatus(station).missing.includes(`${held.kind}:chopped`)) return refuse('chopFirst');
     return act(def.add, () => {
       station.contents = [...contents, held];
       station.progress = 0;
       return null;
     });
   }
-  if (!contents.length) return NOTHING;
+  if (!contents.length) return refuse(held ? def.refuse ?? 'potIngredients' : def.empty);
   if (held) return refuse('dishInHand'); // one dish at a time
   // Half a recipe stays in (so a quick double E after adding milk never makes an accidental mystery stew).
   // Never a softlock: recipes are smaller than the pot, so one more wrong ingredient always makes a mystery stew.
   if (cookerStatus(station).missing.length) return refuse('missing');
+  // A short grace after the last ingredient went in, so a quick double E never plates it raw by accident.
+  if (station.progress * def.seconds < COOK_GRACE) return refuse('justAdded');
   const cooked = station.progress >= 1;
   const recipe = matchRecipe(contents, station.type);
   // Taking food out early is allowed. That's the whole joke. (A mystery stew is just a mystery, never early.)
