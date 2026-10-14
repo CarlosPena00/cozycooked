@@ -1635,9 +1635,9 @@ def crate(icon_img, label_color):
             "uTTTTTTTTTTTTTTu",
             "uTuTTTTTTTTTTuTu",
             "uuuuuuuuuuuuuuuu",
-            "uTTTTwwwwwwTTTTu",
-            "uTuTTwLLLLwTTuTu",
-            "uTTTTwwwwwwTTTTu",
+            "uTuEeeeeeeeeEuTu",
+            "uTTEeeeeeeeeETTu",
+            "uTuELLLLLLLLEuTu",
         ],
         {"L": label_color},
     )
@@ -1696,9 +1696,9 @@ def mist(w=256, h=128):
 def sunset_gradient(h=256):
     """Vertical golden-hour wash: rose at the top, peach in the middle, soft amber at the bottom."""
     stops = [
-        (0.0, (236, 112, 150, 0.34)),
-        (0.5, (255, 156, 104, 0.27)),
-        (1.0, (255, 196, 120, 0.20)),
+        (0.0, (242, 102, 138, 0.32)),
+        (0.5, (255, 134, 82, 0.30)),
+        (1.0, (255, 178, 74, 0.26)),
     ]
     f = Image.new("RGBA", (8, h))
     for y in range(h):
@@ -1769,6 +1769,7 @@ HEART = [
     "....R....",
 ]
 HEART_PAL = {"r": "#f0647a", "R": "#c94660", "h": "#ffc2cc"}
+RUSTIC_HEART_PAL = {"r": "#e8a04a", "R": "#b8692e", "h": "#ffe0a8"}
 
 STEAM_HEART = [
     ".ww...ww.",
@@ -2592,6 +2593,8 @@ def build(preview_dir=None):
     add_big("parasol", parasol())
     add("petals_0", petals(0))
     add("petals_1", petals(1))
+    # diary: a caramel heart for "charmingly rustic" (the pale steam heart vanishes on the cream page)
+    add("heart_rustic", sprite(HEART, RUSTIC_HEART_PAL))
 
     names = list(frames)
     cols = 16

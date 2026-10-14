@@ -2,7 +2,7 @@
 // wash, and a blue night that keeps the kitchen warm and readable (only the far lake gets dim), with lanterns,
 // string lights on the deck and fireflies.
 import { TILE, ART_SCALE, MAP, DAY, LANTERNS, KITCHEN, DECK } from './data.js';
-import { DEPTH, tileCenter, artFrame, artImage, stretched } from './views.js';
+import { DEPTH, tileCenter, artFrame, artImage, stretched, mixColor } from './views.js';
 
 const NIGHT_MASK = 'nightMask';
 const MASK_SCALE = 8; // the mask is drawn small and scaled up (smooth gradients are cheap that way)
@@ -13,9 +13,17 @@ const MAP_H = MAP.length * TILE;
 const VIEW_H = 1080;
 const MIST_SCALE = 8.5; // mist.png is 256x128: 2176x1088 on screen, two copies side by side
 const MIST_SPEED = 14; // px/s
+// Dawn mist stays on open water (tile boxes, inclusive), so it never washes over the kitchen, the deck or the guests.
+const MIST_AREAS = [
+  { left: 0, top: 0, right: 19, bottom: 0 }, // behind the kitchen roof, under the order cards
+  { left: 0, top: 1, right: 3, bottom: 11 }, // the lake on the left
+  { left: 13, top: 1, right: 16, bottom: 3 }, // above the deck
+  { left: 17, top: 1, right: 19, bottom: 4 },
+  { left: 17, top: 9, right: 19, bottom: 9 }, // below the pier
+  { left: 4, top: 10, right: 19, bottom: 11 }, // under the bottom panel
+];
 const FIREFLIES = 10;
 const lerp = (a, b, p) => a + (b - a) * p;
-const mixColor = (a, b, p) => [16, 8, 0].reduce((c, s) => c | (Math.round(lerp((a >> s) & 255, (b >> s) & 255, p)) << s), 0);
 
 // Keyframes [t, ...] -> the two around t and how far between them (0..1).
 function around(keys, t) {
@@ -72,11 +80,21 @@ export class Mood {
   constructor(scene) {
     this.scene = scene;
     bakeNightMask(scene);
+    this.dark = 0;
     const layer = (o) => o.setDepth(DEPTH.daylight);
     this.sky = layer(scene.add.rectangle(0, 0, MAP_W, MAP_H, 0xffffff, 0).setOrigin(0));
+    // Two copies of the mist side by side drift left; each is cut into one cropped image per lake area.
     const mist = stretched(scene, 'mistFull', 'mist', 256 * MIST_SCALE, 128 * MIST_SCALE);
-    this.mist = [0, 1].map((i) => layer(scene.add.image(i * 256 * MIST_SCALE, 0, mist).setOrigin(0).setAlpha(0)));
-    this.sunset = layer(scene.add.image(0, 0, stretched(scene, 'sunsetFull', 'sunset', MAP_W, VIEW_H)).setOrigin(0).setAlpha(0));
+    this.mistX = 0;
+    this.mist = [0, 1].flatMap((copy) => MIST_AREAS.map((area) => {
+      const img = layer(scene.add.image(0, 0, mist).setOrigin(0).setAlpha(0));
+      return Object.assign(img, { copy, area: { x: area.left * TILE, y: area.top * TILE, r: (area.right + 1) * TILE, b: (area.bottom + 1) * TILE } });
+    }));
+    // The golden hour: a rose-to-amber wash, plus the same wash in overlay mode, which warms the blue lake towards
+    // rose and amber instead of greying it (Canvas supports overlay; WebGL just draws it as a second wash).
+    const sunset = stretched(scene, 'sunsetFull', 'sunset', MAP_W, VIEW_H);
+    this.sunset = [0, 1].map((i) => layer(scene.add.image(0, 0, sunset).setOrigin(0).setAlpha(0)
+      .setBlendMode(i ? Phaser.BlendModes.OVERLAY : Phaser.BlendModes.NORMAL)));
     this.night = layer(scene.add.image(0, 0, NIGHT_MASK).setOrigin(0).setAlpha(0));
     // Lamplight: a big warm glow over the room, under the lantern glows.
     const cx = ((KITCHEN.left + KITCHEN.right) / 2) * TILE;
@@ -180,17 +198,23 @@ export class Mood {
     const alpha = lerp(a[2], b[2], p);
     this.sky.setFillStyle(mixColor(a[1], b[1], p), alpha).setVisible(alpha > 0.005);
     const mist = valueAt(DAY.mist, t);
+    const mistW = this.mist[0].width;
+    if (mist > 0.005) this.mistX = (this.mistX - MIST_SPEED * (this.scene.game.loop.delta / 1000)) % mistW;
     for (const m of this.mist) {
-      m.setAlpha(mist).setVisible(mist > 0.005);
-      if (mist > 0.005) {
-        m.x -= MIST_SPEED * (this.scene.game.loop.delta / 1000);
-        if (m.x <= -m.displayWidth) m.x += 2 * m.displayWidth;
-      }
+      const x = this.mistX + m.copy * mistW;
+      // The part of this copy over its area, in texture pixels (the texture is drawn 1:1 from the image's top left).
+      const left = Math.max(0, m.area.x - x);
+      const right = Math.min(mistW, m.area.r - x);
+      const bottom = Math.min(m.height, m.area.b);
+      const show = mist > 0.005 && right > left && bottom > m.area.y;
+      m.setVisible(show);
+      if (show) m.setPosition(x, 0).setAlpha(mist).setCrop(left, m.area.y, right - left, bottom - m.area.y);
     }
     const sunset = valueAt(DAY.sunset, t);
-    this.sunset.setAlpha(sunset).setVisible(sunset > 0.005);
+    for (const wash of this.sunset) wash.setAlpha(sunset).setVisible(sunset > 0.005);
     const night = valueAt(DAY.night, t);
     this.night.setAlpha(night).setVisible(night > 0.005);
+    this.dark = Math.min(1, night / 0.6); // 0 by day .. 1 at night: the HUD and the done halo follow it
     const lamp = Math.min(1, night / 0.5) * 0.32;
     this.lamplight.setAlpha(lamp).setVisible(lamp > 0.005);
     const flies = Math.max(0, (night - 0.3) / 0.3);

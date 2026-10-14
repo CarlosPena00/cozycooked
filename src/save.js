@@ -6,8 +6,10 @@ const KEY = 'cozycooked.save.v1';
 const DEFAULTS = { version: 1, day: 1, coins: 0, muted: false, returning: [] };
 
 const wholeNumber = (n, min) => (Number.isInteger(n) && n >= min ? n : null);
+// Valid guests, each once (the first entry wins).
 const guests = (list) => (Array.isArray(list) ? list : [])
   .filter((g) => CUSTOMERS[g?.id] && RECIPES[g?.recipe])
+  .filter((g, i, valid) => valid.findIndex((o) => o.id === g.id) === i)
   .map(({ id, recipe }) => ({ id, recipe }))
   .slice(0, DAY.maxCustomers);
 

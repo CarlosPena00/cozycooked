@@ -519,7 +519,7 @@ export class KitchenScene extends Phaser.Scene {
 
     const busy = { pot: false, fryer: false };
     for (const [st, view] of this.stationViews) {
-      view.sync(st, time);
+      view.sync(st, time, this.mood.dark);
       if (isCooker(st) && st.contents.length && st.progress < 1) busy[st.type] = true;
     }
     for (const [type, [name, volume]] of Object.entries(COOK_LOOPS)) audio.loop(name, busy[type], volume);
@@ -540,6 +540,7 @@ export class KitchenScene extends Phaser.Scene {
       phase: this.day.phase,
       dayProgress: this.day.t / DAY.length,
       night: this.day.phase === 'night' || this.day.phase === 'closing',
+      dark: this.mood.dark,
       muted: audio.muted,
     });
   }

@@ -55,8 +55,10 @@ export function cookerStatus(station) {
 }
 
 // Advance a cooker by dt seconds. Returns true on the frame it finishes. Nothing ever burns.
+// Half a recipe waits for the rest instead (it would only cook into a mystery stew nobody asked for).
 export function cook(station, dt) {
   if (!isCooker(station) || !station.contents.length || station.progress >= 1) return false;
+  if (cookerStatus(station).missing.length) return false;
   station.progress = Math.min(1, station.progress + dt / COOKERS[station.type].seconds);
   return station.progress >= 1;
 }
@@ -122,7 +124,8 @@ function cooker(station, held) {
       return null;
     });
   }
-  if (!contents.length) return refuse(held ? def.refuse ?? 'potIngredients' : def.empty);
+  // Only a dish can be in hand here (ingredients were handled above): point it at a window.
+  if (!contents.length) return refuse(held ? 'takeDish' : def.empty);
   if (held) return refuse('dishInHand'); // one dish at a time
   // Half a recipe stays in (so a quick double E after adding milk never makes an accidental mystery stew).
   // Never a softlock: recipes are smaller than the pot, so one more wrong ingredient always makes a mystery stew.

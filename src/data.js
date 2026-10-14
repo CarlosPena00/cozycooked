@@ -56,12 +56,13 @@ export const DECOR = [
 // Sounds: name -> files (Phaser picks the first format the browser plays). Missing names are silently skipped.
 const sound = (name) => [`assets/audio/${name}.ogg`, `assets/audio/${name}.mp3`];
 export const SOUNDS = Object.fromEntries(
-  ['music', 'chop', 'boil', 'sizzle', 'plate', 'coin', 'pickup', 'serve', 'click'].map((name) => [name, sound(name)]),
+  ['music', 'chop', 'boil', 'sizzle', 'plate', 'coin', 'pickup', 'serve', 'click', 'plop', 'assemble', 'bin', 'toss'].map((name) => [name, sound(name)]),
 );
 // Which sound each gameplay event plays (see the event list in KitchenScene): event -> [sound, volume, rate?].
 export const EVENT_SOUNDS = {
   interact: ['click', 0.35], nope: ['click', 0.22, 0.55], chop: ['chop', 0.45], cookerDone: ['pickup', 0.5], fryerDone: ['pickup', 0.5],
   plate: ['plate', 0.5], serve: ['serve', 0.45], coinLand: ['coin', 0.3], coinPick: ['pickup', 0.35],
+  cookerAdd: ['plop', 0.3], assemble: ['assemble', 0.35], bin: ['bin', 0.35], coinDrop: ['toss', 0.12],
 };
 // Soft loops while something cooks: cooker type -> [sound, volume]. The loop files are quiet (mean about -29 dBFS),
 // so near full volume they sit about 8 dB under the music (music mean -11 dBFS at MUSIC_VOLUME 0.3): audible, not loud.
@@ -195,10 +196,11 @@ export const DAY = {
   // Looks (mood.js), all [t, value] keyframes, linear in between. sky: a colour wash [t, color, alpha] (dawn lavender,
   // amber at sunset); mist: dawn mist over the lake; sunset: the rose-to-amber golden hour; night: the blue night mask (the kitchen
   // and the deck stay almost clear of it, so only the far lake gets dim).
-  sky: [[0, 0xbec8eb, 0.14], [30, 0xffe2b0, 0], [200, 0xff9a6a, 0], [232, 0xff8a6a, 0.12], [262, 0x8a6ab0, 0.06], [278, 0x6a5aa8, 0]],
+  // The night only starts once the golden hour has peaked, so blue never muddies the amber and rose.
+  sky: [[0, 0xbec8eb, 0.14], [30, 0xffe2b0, 0], [200, 0xffb060, 0], [228, 0xffa050, 0.1], [250, 0xff7a6a, 0.1], [268, 0x8a6ab0, 0.05], [280, 0x6a5aa8, 0]],
   mist: [[0, 1], [18, 0.75], [40, 0]],
-  sunset: [[195, 0], [225, 1], [255, 0.85], [282, 0]],
-  night: [[0, 0.2], [30, 0], [230, 0], [260, 0.42], [285, 0.6], [300, 0.64]],
+  sunset: [[195, 0], [222, 1], [250, 1], [280, 0]],
+  night: [[0, 0.2], [30, 0], [242, 0], [268, 0.42], [285, 0.6], [300, 0.64]],
   closingMaxSeconds: 4, // after closing starts, the diary appears when the deck is empty or after this
   // Calm gaps: a guest arrives `gaps[day][n]` seconds (+-jitter) after the latest arrival or departure,
   // n = guests on the deck that are not leaving. Rows: day 1, day 2, day 3+. No arrivals after `last`.
@@ -265,7 +267,7 @@ export const STRINGS = {
     needDish: 'bring a dish from a pot or fryer',
     closed: 'closed for today - good night!',
     justAdded: 'it just went in',
-    potIngredients: 'take the dish to a window or counter',
+    takeDish: 'take the dish to a window or counter',
     emptyPot: 'add ingredients here',
     emptyFryer: 'fry a raw pastel here',
     emptyBoard: 'put cheese here to chop it',

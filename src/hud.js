@@ -3,7 +3,7 @@
 // right, and a small "E: action" label that follows the chef.
 import { CUSTOMERS } from './data.js';
 import { t, dishName } from './text.js';
-import { TEXT, SMALL, INK, COLORS, DEPTH, ART, artFrame, artImage, recipeArt, portraitArt, pop } from './views.js';
+import { TEXT, SMALL, INK, COLORS, DEPTH, ART, artFrame, artImage, recipeArt, portraitArt, pop, mixColor } from './views.js';
 
 const CARD = { x: 16, y: 16, w: 356, h: 112, gap: 12 };
 const CLOCK = { x: 1654, y: 16, w: 250, h: 112 };
@@ -11,13 +11,22 @@ const BOTTOM = { x: 16, y: 970, w: 1236, h: 98 };
 const COINS = { x: 1664, y: 970, w: 240, h: 84 };
 const COIN_TICK_MS = 110;
 
+// Cream paper in lamplight: what the paper panels warm and dim to at night (no glare over the dark lake).
+const NIGHT_PAPER = 0xd8bf98;
+const NIGHT_EDGE = 0x6e4a32;
+const DIM_STEPS = 10; // panels are redrawn only when the dimming moves a step
+
 // A rounded panel with a soft drop shadow. style: 'paper' (cream, ink text) or 'wood' (dark, cream text).
-export function panel(scene, x, y, w, h, style = 'paper') {
-  const g = scene.add.graphics();
+// dim: 0 (day) .. 1 (night), paper only.
+export function panel(scene, x, y, w, h, style = 'paper', dim = 0) {
+  return drawPanel(scene.add.graphics(), x, y, w, h, style, dim);
+}
+
+function drawPanel(g, x, y, w, h, style, dim) {
   const paper = style === 'paper';
-  g.fillStyle(0x1b1210, 0.25).fillRoundedRect(x + 3, y + 5, w, h, 18);
-  g.fillStyle(paper ? COLORS.paper : COLORS.wood, paper ? 0.97 : 0.84).fillRoundedRect(x, y, w, h, 18);
-  g.lineStyle(3, paper ? COLORS.paperEdge : COLORS.woodEdge, 1).strokeRoundedRect(x, y, w, h, 18);
+  g.clear().fillStyle(0x1b1210, 0.25).fillRoundedRect(x + 3, y + 5, w, h, 18);
+  g.fillStyle(paper ? mixColor(COLORS.paper, NIGHT_PAPER, dim) : COLORS.wood, paper ? 0.97 : 0.84).fillRoundedRect(x, y, w, h, 18);
+  g.lineStyle(3, paper ? mixColor(COLORS.paperEdge, NIGHT_EDGE, dim) : COLORS.woodEdge, 1).strokeRoundedRect(x, y, w, h, 18);
   return g;
 }
 
@@ -27,8 +36,9 @@ export class Hud {
     const add = (o) => o.setDepth(DEPTH.hud);
     this.cards = add(scene.add.container(0, 0));
     this.ordersKey = null;
+    this.dim = 0;
 
-    add(panel(scene, CLOCK.x, CLOCK.y, CLOCK.w, CLOCK.h));
+    this.clock = add(panel(scene, CLOCK.x, CLOCK.y, CLOCK.w, CLOCK.h));
     const cx = CLOCK.x + CLOCK.w / 2;
     this.arc = { x: cx, y: CLOCK.y + 100, r: 82 };
     const g = add(scene.add.graphics());
@@ -55,9 +65,15 @@ export class Hud {
     this.label = new ActionLabel(scene);
   }
 
-  // orders: waiting customers, oldest first. dayProgress: 0..1 over the day.
-  update({ orders, next, held, label, coins, day, phase, dayProgress, night, muted }) {
-    this.renderOrders(orders);
+  // orders: waiting customers, oldest first. dayProgress: 0..1 over the day. dark: 0 (day) .. 1 (night).
+  update({ orders, next, held, label, coins, day, phase, dayProgress, night, dark = 0, muted }) {
+    const dim = Math.round(dark * DIM_STEPS) / DIM_STEPS;
+    const dimmed = dim !== this.dim;
+    if (dimmed) {
+      this.dim = dim;
+      drawPanel(this.clock, CLOCK.x, CLOCK.y, CLOCK.w, CLOCK.h, 'paper', dim);
+    }
+    this.renderOrders(orders, dimmed);
     this.nextText.setText(t('hud.next', { text: next }));
     this.renderHeld(held);
     this.countCoins(coins);
@@ -98,10 +114,10 @@ export class Hud {
     this.heldText.x = art ? BOTTOM.x + 82 : BOTTOM.x + 24;
   }
 
-  // Rebuilt only when the list of waiting orders changes.
-  renderOrders(orders) {
+  // Rebuilt only when the list of waiting orders changes (or the panels dim a step).
+  renderOrders(orders, force = false) {
     const key = orders.map((c) => `${c.id}:${c.recipe}`).join(',');
-    if (key === this.ordersKey) return;
+    if (key === this.ordersKey && !force) return;
     const old = this.ordersKey ? this.ordersKey.split(',') : [];
     this.ordersKey = key;
     this.cards.removeAll(true);
@@ -120,8 +136,8 @@ export class Hud {
     const { scene } = this;
     const { ingredients, cooker, dish } = recipeArt(c.recipe);
     const parts = [
-      panel(scene, x, y, CARD.w, CARD.h),
-      scene.add.circle(x + 44, y + 56, 34, 0xf3dfb8),
+      panel(scene, x, y, CARD.w, CARD.h, 'paper', this.dim),
+      scene.add.circle(x + 44, y + 56, 34, mixColor(0xf3dfb8, 0xc9ad84, this.dim)),
       artImage(scene, x + 44, y + 56, portraitArt(c.id), 4),
       scene.add.text(x + 88, y + 8, t('hud.wants', { customer: CUSTOMERS[c.id].name }), { ...INK, fontSize: '22px', color: COLORS.inkSoft }),
       scene.add.text(x + 88, y + 32, dishName({ recipe: c.recipe, cooked: true }), { ...INK, fontSize: '28px', fontStyle: '600' }),

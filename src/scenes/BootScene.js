@@ -6,6 +6,8 @@ import { ART_FRAMES, ART_ANIMS } from '../../assets/art/frames.js';
 
 const FONTS = ['400 32px Fredoka', '500 32px Fredoka', '600 32px Fredoka', '32px "Patrick Hand"'];
 const FONT_TIMEOUT = 4000; // offline or blocked fonts: carry on with the fallback font
+// This module's own ?v= (index.html import map), so a deploy never pairs a new frames.js with a cached art.png.
+const V = new URL(import.meta.url).search;
 
 // Frames per second for each animation; walk speed sets how fast each animal's feet move.
 function frameRate(name) {
@@ -20,13 +22,13 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload() {
-    this.load.spritesheet('art', 'assets/art/art.png', { frameWidth: 16, frameHeight: 16 });
-    this.load.spritesheet('lanternPost', 'assets/art/lantern_post.png', { frameWidth: 16, frameHeight: 32 });
-    this.load.spritesheet('wallsTall', 'assets/art/walls_tall.png', { frameWidth: 16, frameHeight: 32 });
-    this.load.image('rug', 'assets/art/rug_oval.png'); // 3x2 tiles
-    this.load.image('glow', 'assets/art/glow.png');
-    this.load.image('mist', 'assets/art/mist.png');
-    this.load.image('sunset', 'assets/art/sunset.png');
+    this.load.spritesheet('art', 'assets/art/art.png' + V, { frameWidth: 16, frameHeight: 16 });
+    this.load.spritesheet('lanternPost', 'assets/art/lantern_post.png' + V, { frameWidth: 16, frameHeight: 32 });
+    this.load.spritesheet('wallsTall', 'assets/art/walls_tall.png' + V, { frameWidth: 16, frameHeight: 32 });
+    this.load.image('rug', 'assets/art/rug_oval.png' + V); // 3x2 tiles
+    this.load.image('glow', 'assets/art/glow.png' + V);
+    this.load.image('mist', 'assets/art/mist.png' + V);
+    this.load.image('sunset', 'assets/art/sunset.png' + V);
     audio.preload(this);
   }
 

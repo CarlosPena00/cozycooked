@@ -7,13 +7,39 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600&family=Patrick+Hand&display=swap">
-  <link rel="stylesheet" href="style.css?v=13">
+  <link rel="stylesheet" href="style.css?v=14">
 </head>
 <body>
   <div id="game"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/4.2.1/phaser.min.js"
           integrity="sha512-PkoMuUtlCMnpnxNjSnOsEXPvRit6fVtCGAN6K9/UAdfiityWVTQ0HarqXorNRphKtEmN6HWj7LjltuCZnjeqsA=="
           crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <script type="module" src="src/main.js?v=13"></script>
+  <!-- Every module URL gets the same ?v= as main.js (tools/bump_version.py rebuilds this block). -->
+  <!-- importmap:start -->
+  <script type="importmap">
+  {
+    "imports": {
+      "./src/audio.js": "./src/audio.js?v=14",
+      "./src/customers.js": "./src/customers.js?v=14",
+      "./src/data.js": "./src/data.js?v=14",
+      "./src/day.js": "./src/day.js?v=14",
+      "./src/hud.js": "./src/hud.js?v=14",
+      "./src/map.js": "./src/map.js?v=14",
+      "./src/mood.js": "./src/mood.js?v=14",
+      "./src/save.js": "./src/save.js?v=14",
+      "./src/scenes/BootScene.js": "./src/scenes/BootScene.js?v=14",
+      "./src/scenes/DiaryScene.js": "./src/scenes/DiaryScene.js?v=14",
+      "./src/scenes/HelpScene.js": "./src/scenes/HelpScene.js?v=14",
+      "./src/scenes/KitchenScene.js": "./src/scenes/KitchenScene.js?v=14",
+      "./src/scenes/TitleScene.js": "./src/scenes/TitleScene.js?v=14",
+      "./src/stations.js": "./src/stations.js?v=14",
+      "./src/text.js": "./src/text.js?v=14",
+      "./src/views.js": "./src/views.js?v=14",
+      "./assets/art/frames.js": "./assets/art/frames.js?v=14"
+    }
+  }
+  </script>
+  <!-- importmap:end -->
+  <script type="module" src="src/main.js?v=14"></script>
 </body>
 </html>

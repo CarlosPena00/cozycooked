@@ -1,7 +1,7 @@
 // How game state looks: items, stations, the chef, customers, small effects, text styles and draw order.
 // Almost everything is a frame of one self-made sheet, 'art' (assets/art/art.png, names in assets/art/frames.js).
 import { TILE, ART_SCALE, INGREDIENTS, RECIPES, MYSTERY, ASSEMBLIES, CHOPS_NEEDED, SPRITES, KITCHEN } from './data.js';
-import { matchRecipe, isCooker } from './stations.js';
+import { matchRecipe, isCooker, cookerStatus } from './stations.js';
 import { ART_FRAMES } from '../assets/art/frames.js';
 
 export const ART = 'art';
@@ -30,6 +30,8 @@ export const ITEM_SCALE = 5; // food and dishes, on stations and in the chef's h
 export const ICON_SCALE = 3; // small icons: pot contents, effects
 
 export const tileCenter = (t) => t * TILE + TILE / 2;
+// Mix two 0xRRGGBB colors (p = 0: a, 1: b).
+export const mixColor = (a, b, p) => [16, 8, 0].reduce((c, s) => c | (Math.round((((a >> s) & 255) * (1 - p)) + ((b >> s) & 255) * p) << s), 0);
 export const artFrame = (name) => ART_FRAMES[name];
 export const artImage = (scene, x, y, name, scale = S) => scene.add.image(x, y, ART, ART_FRAMES[name]).setScale(scale);
 
@@ -229,25 +231,21 @@ export class StationView {
     this.x = x;
     this.y = y;
     this.item = new ItemView(scene, x, y - px(1), DEPTH.stationItem);
-    this.barWidth = TILE * 0.78;
-    // Just above the tile, so the chef standing below never covers it.
-    const barY = y - TILE / 2 - 6;
-    this.barBack = scene.add.rectangle(x, barY, this.barWidth + 6, 16, 0x2b1d1a, 0.8).setDepth(DEPTH.stationInfo).setVisible(false);
-    this.bar = scene.add.rectangle(x - this.barWidth / 2, barY, 0, 9, 0xf0c04a).setOrigin(0, 0.5).setDepth(DEPTH.stationInfo);
-    // Crates: a small picture of what is inside on the front plaque, readable from across the room.
-    if (station.type === 'crate') artImage(scene, x, y + px(5.5), INGREDIENTS[station.kind].art, 2).setDepth(DEPTH.stationItem);
+    // Just above the tile, so the chef standing below never covers it: a dark outline around a cream backing
+    // (readable on the green wall), filled in whole art pixels.
+    this.barWidth = px(12);
+    const barY = y - TILE / 2 - 8;
+    this.barBack = [[this.barWidth + 12, 24, 0x3b2420], [this.barWidth + 6, 18, COLORS.paper]]
+      .map(([w, h, color]) => scene.add.rectangle(x, barY, w, h, color).setDepth(DEPTH.stationInfo).setVisible(false));
+    this.bar = scene.add.rectangle(x - this.barWidth / 2, barY, 0, 12, 0xf0c04a).setOrigin(0, 0.5).setDepth(DEPTH.stationInfo);
+    // Crates: a small picture of what is inside on the cream front card, readable from across the room
+    // (half the world's art scale, the finest the art goes).
+    if (station.type === 'crate') artImage(scene, x, y + px(5), INGREDIENTS[station.kind].art, S / 2).setDepth(DEPTH.stationItem);
     this.cooker = isCooker(station);
     if (!this.cooker) return;
     this.overlay = artImage(scene, x, y, 'potfill_broth').setDepth(DEPTH.stationItem).setVisible(false);
-    // A warm glow that breathes under a finished cooker until the food is plated.
-    // Two soft layers (one glow image alone is faint over the bright stove).
-    const glows = [TILE * 2, TILE * 1.3].map((d) => {
-      const size = Math.round(d);
-      return scene.add.image(x, y, stretched(scene, `glow${size}`, 'glow', size, size)).setDepth(DEPTH.stationItem - 1)
-        .setBlendMode(Phaser.BlendModes.ADD);
-    });
-    this.glow = scene.add.container(0, 0, glows).setDepth(DEPTH.stationItem - 1).setVisible(false);
-    scene.tweens.add({ targets: this.glow, alpha: { from: 1, to: 0.55 }, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    // A stepped pixel halo that breathes around a finished cooker until the food is plated (never over the food).
+    this.glow = pixelHalo(scene, x, y).setDepth(DEPTH.stationItem - 1).setVisible(false);
     this.icons = [];
     this.iconsKey = '';
     this.steam = scene.add.particles(x, y - px(4.5), ART, {
@@ -266,20 +264,20 @@ export class StationView {
     for (const obj of [this.item.image, ...(this.icons ?? [])]) wiggle(this.scene, obj, 8);
   }
 
-  sync(station, time) {
+  // dark: 0 by day .. 1 at night (the halo is softer in daylight).
+  sync(station, time, dark = 0) {
     let progress = 0;
-    if (this.cooker) progress = this.syncCooker(station, time);
+    if (this.cooker) progress = this.syncCooker(station, time, dark);
     else {
       if (station.type === 'board') progress = station.chops / CHOPS_NEEDED;
       this.item.set(station.item);
     }
-    this.barBack.setVisible(progress > 0);
-    this.bar.setVisible(progress > 0);
-    this.bar.width = this.barWidth * Math.min(1, progress);
+    for (const o of [...this.barBack, this.bar]) o.setVisible(progress > 0);
+    this.bar.width = Math.round((this.barWidth / S) * Math.min(1, progress)) * S;
     this.bar.setFillStyle(progress >= 1 ? 0x8ad46b : 0xf6c453);
   }
 
-  syncCooker(station, time) {
+  syncCooker(station, time, dark) {
     const { contents } = station;
     const busy = contents.length > 0;
     const ready = busy && station.progress >= 1;
@@ -288,6 +286,7 @@ export class StationView {
     const arts = ready ? [dishArt({ recipe, cooked: true })] : contents.map(itemArt);
     this.layoutIcons(arts, ready);
     this.glow.setVisible(ready);
+    if (ready) this.glow.setAlpha((0.8 + 0.2 * dark) * (0.8 + 0.2 * Math.sin(time / 260)));
     if (station.type === 'pot') {
       this.overlay.setVisible(busy);
       if (busy) this.overlay.setFrame(ART_FRAMES[(recipe ? RECIPES[recipe].fill : null) ?? 'potfill_broth']);
@@ -297,7 +296,8 @@ export class StationView {
     }
     toggle(this.steam, busy && !ready);
     toggle(this.hearts, ready);
-    return busy ? station.progress : 0;
+    // Half a recipe waits for the rest without a bar (it only cooks once it is a whole recipe or a mystery mix).
+    return busy && !cookerStatus(station).missing.length ? station.progress : 0;
   }
 
   // Up to 2 icons per row, above the progress bar, over the water row under the HUD cards.
@@ -307,7 +307,7 @@ export class StationView {
     if (key === this.iconsKey) return;
     this.iconsKey = key;
     for (const icon of this.icons) icon.destroy();
-    const top = this.y - TILE / 2 - 14;
+    const top = this.y - TILE / 2 - 20;
     if (ready) {
       const icon = artImage(this.scene, this.x, top - 34, arts[0], ICON_SCALE + 1).setDepth(DEPTH.stationInfo);
       icon.setScale(1);
@@ -327,6 +327,22 @@ export class StationView {
       return icon;
     });
   }
+}
+
+// A finished cooker's halo: rings of whole art pixels around the tile, rounded at the corners, fading outwards.
+const HALO = [[0xfff1b0, 0.95], [0xffd36b, 0.65], [0xffb84d, 0.3]]; // [color, alpha], from the tile edge out
+function pixelHalo(scene, x, y) {
+  const g = scene.add.graphics({ x, y });
+  const half = 8; // art px from the tile centre to its edge
+  const reach = half + HALO.length;
+  for (let i = -reach; i < reach; i++) {
+    for (let j = -reach; j < reach; j++) {
+      const d = Math.hypot(Math.max(0, Math.abs(i + 0.5) - half), Math.max(0, Math.abs(j + 0.5) - half));
+      const ring = HALO[Math.ceil(d) - 1];
+      if (ring) g.fillStyle(ring[0], ring[1]).fillRect(px(i), px(j), S, S);
+    }
+  }
+  return g;
 }
 
 function toggle(emitter, on) {
@@ -428,7 +444,8 @@ export class CustomerView {
     } else if (c.state === 'waiting') {
       body.play(`${id}_front`, true).setFlipX(false);
     }
-    body.setPosition(x, feet - this.lift);
+    // Lower rows stand in front (neighbouring guests overlap a little, and more when they hop).
+    body.setPosition(x, feet - this.lift).setDepth(DEPTH.customer + c.ty / 100);
     this.shadow.setPosition(x, feet - 2);
 
     this.lineLeft -= dt;
@@ -438,7 +455,8 @@ export class CustomerView {
     if (this.line) this.bubble.show(null, this.line);
     else if (order) this.bubble.show(dishArt({ recipe: c.recipe, cooked: true }), null);
     else this.bubble.hide();
-    this.bubble.setPosition(x + px(6.5), feet - px(13));
+    // Kept on screen while a guest walks in or out past the right edge.
+    this.bubble.setPosition(Math.min(x + px(6.5), this.scene.scale.width - 30 - this.bubble.w), feet - px(13));
   }
 
   react(c, x, feet) {

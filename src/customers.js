@@ -29,7 +29,7 @@ export class Customers {
     this.list = []; // on the deck now, arrival order
     this.log = []; // every guest of the day (same objects), for the diary
     this.script = dayNumber === 1 ? DAY.script : returning;
-    this.scriptIndex = 0;
+    this.pending = [...this.script]; // scripted guests still to come, in order
     this.closed = false;
     this.t = 0;
     this.changed(0);
@@ -86,15 +86,14 @@ export class Customers {
     return DECK.spots.find((spot) => empty(spot, false)) ?? DECK.spots.find((spot) => empty(spot, true)) ?? null;
   }
 
+  // Scripted guests first, in order, each once it is their time of day (a returning maned wolf still comes at dusk);
+  // otherwise a random guest who is neither on the deck nor still expected.
   nextGuest(t) {
     const onDeck = (id) => this.list.some((c) => c.id === id);
-    if (this.scriptIndex < this.script.length) {
-      const scripted = this.script[this.scriptIndex];
-      if (onDeck(scripted.id)) return null;
-      this.scriptIndex += 1;
-      return scripted;
-    }
-    const ids = Object.keys(CUSTOMERS).filter((id) => !onDeck(id) && t >= CUSTOMERS[id].minTime);
+    const ready = (id) => !onDeck(id) && t >= CUSTOMERS[id].minTime;
+    const i = this.pending.findIndex((g) => ready(g.id));
+    if (i >= 0) return this.pending.splice(i, 1)[0];
+    const ids = Object.keys(CUSTOMERS).filter((id) => ready(id) && !this.pending.some((g) => g.id === id));
     if (!ids.length) return null;
     const id = pick(ids);
     const recipe = Math.random() < DAY.arrivals.favoriteChance ? CUSTOMERS[id].favorite : pick(Object.keys(RECIPES));

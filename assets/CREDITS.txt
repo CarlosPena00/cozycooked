@@ -29,3 +29,5 @@ audio/pickup.ogg/.mp3 - "coin3" from "RPG Sound Pack" by artisticdude
 audio/serve.ogg/.mp3 - "bell_ding2" from "Bell dings/chimes" by pwl (trimmed, faded)
   License: CC0 1.0. https://opengameart.org/content/bell-dingschimes
 audio/sizzle.ogg/.mp3 - self-made (filtered noise synthesized with ffmpeg). License: CC0 1.0.
+audio/plop, assemble, bin, toss (.ogg/.mp3) - self-made (synthesized in pure Python by tools/make_sounds.py,
+  encoded with ffmpeg). License: CC0 1.0.

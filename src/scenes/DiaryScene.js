@@ -7,7 +7,7 @@ import { HAND, ART, artFrame, artImage, dishArt, portraitArt } from '../views.js
 const MAX_LINES = 12;
 const PAGE = { x: 330, y: 50, w: 1260, h: 980 };
 const LINE = 46; // ruled line spacing
-const MOOD_ART = { happy: 'heart', cozycooked: 'steam_2', surprised: 'sparkle_1' };
+const MOOD_ART = { happy: 'heart', cozycooked: 'heart_rustic', surprised: 'sparkle_1' };
 
 export class DiaryScene extends Phaser.Scene {
   constructor() {
