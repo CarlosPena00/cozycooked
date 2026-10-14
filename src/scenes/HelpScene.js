@@ -46,7 +46,7 @@ export class HelpScene extends Phaser.Scene {
     ink(240, 190, t('help.recipes'), { fontSize: '34px', fontStyle: '600', color: COLORS.inkSoft });
     Object.entries(RECIPES).forEach(([id, recipe], i) => this.recipeCard(id, recipe, 240, 240 + i * 150));
 
-    // Undercooked is a feature: sleepy dishes.
+    // Cozycooked is a feature: sleepy dishes.
     const ry = 712;
     ['dish_brigadeiro_under', 'dish_baiao_under', 'dish_pastel_under'].forEach((art, i) => artImage(this, 276 + i * 70, ry + 22, art, 4));
     ink(500, ry, t('help.rules'), { fontSize: '26px', wordWrap: { width: 1180 }, lineSpacing: 4 });

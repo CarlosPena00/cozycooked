@@ -214,7 +214,7 @@ export const DAY = {
 // CUTTING BOARD, POT, FRYER, SERVE WINDOW. Keep each "Next:" hint to one short line.
 export const STRINGS = {
   title: {
-    name: 'Undercooked',
+    name: 'Cozycooked',
     subtitle: 'a cozy kitchen by the lake',
     press: 'Press any key',
     save: 'Day {day} - {coins} coins',
@@ -236,7 +236,7 @@ export const STRINGS = {
   },
   item: {
     chopped: 'Chopped {ingredient}',
-    cozycooked: 'Undercooked {dish}',
+    cozycooked: 'Cozycooked {dish}',
   },
   // Shown after "[E]" next to the chef (first letter capitalized). Keep them short.
   action: {

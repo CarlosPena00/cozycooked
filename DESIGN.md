@@ -1,4 +1,4 @@
-# Undercooked - Game Design Doc
+# Cozycooked - Game Design Doc
 
 > Uma paródia cozy de Overcooked. Sem pressa, sem timer, sem derrota.
 > Status: ideação (2026-10-10). Nada implementado ainda.
@@ -11,7 +11,7 @@
 
 **Tom:** cozy com humor leve. Cada mecânica estressante do Overcooked tem uma versão invertida:
 
-| Overcooked | Undercooked |
+| Overcooked | Cozycooked |
 |---|---|
 | Timer da fase | O sol se põe devagar; quando escurece, o dia acaba |
 | Pedido expira | O cliente espera para sempre ("tô lendo meu livro") |
@@ -164,7 +164,7 @@ games/cozycooked/
 2. "Cozy, mas raso" (a crítica que o Cozy Cooking: Tiny Tastes recebe). Mitigação: capricho no feedback e clientes com personalidade.
 3. Arte dos bichos brasileiros: não existe em pack e é o maior custo de arte.
 4. Coesão visual ao misturar packs: normalizar para 16px e para a paleta offline.
-5. Nome: já existem vários "Undercooked" no itch.io, e Overcooked é marca da Team17. Ok como paródia pessoal; repensar se for publicar.
+5. Nome: já existem vários "Cozycooked" no itch.io, e Overcooked é marca da Team17. Ok como paródia pessoal; repensar se for publicar.
 
 ## 10. Perguntas em aberto
 
