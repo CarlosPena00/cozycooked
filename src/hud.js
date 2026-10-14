@@ -1,0 +1,172 @@
+// Kitchen HUD, laid out over the lake so it never covers the kitchen or the deck: order cards stacked on the left
+// (like tickets on a rail), day clock top right, Next hint + held item in a strip under the kitchen, coins bottom
+// right, and a small "E: action" label that follows the chef.
+import { CUSTOMERS } from './data.js';
+import { t, dishName } from './text.js';
+import { TEXT, SMALL, INK, COLORS, DEPTH, ART, artFrame, artImage, recipeArt, portraitArt, pop } from './views.js';
+
+const CARD = { x: 16, y: 16, w: 356, h: 112, gap: 12 };
+const CLOCK = { x: 1654, y: 16, w: 250, h: 112 };
+const BOTTOM = { x: 16, y: 970, w: 1236, h: 98 };
+const COINS = { x: 1664, y: 970, w: 240, h: 84 };
+
+// A rounded panel with a soft drop shadow. style: 'paper' (cream, ink text) or 'wood' (dark, cream text).
+export function panel(scene, x, y, w, h, style = 'paper') {
+  const g = scene.add.graphics();
+  const paper = style === 'paper';
+  g.fillStyle(0x1b1210, 0.25).fillRoundedRect(x + 3, y + 5, w, h, 18);
+  g.fillStyle(paper ? COLORS.paper : COLORS.wood, paper ? 0.97 : 0.84).fillRoundedRect(x, y, w, h, 18);
+  g.lineStyle(3, paper ? COLORS.paperEdge : COLORS.woodEdge, 1).strokeRoundedRect(x, y, w, h, 18);
+  return g;
+}
+
+export class Hud {
+  constructor(scene) {
+    this.scene = scene;
+    const add = (o) => o.setDepth(DEPTH.hud);
+    this.cards = add(scene.add.container(0, 0));
+    this.ordersKey = null;
+
+    add(panel(scene, CLOCK.x, CLOCK.y, CLOCK.w, CLOCK.h));
+    const cx = CLOCK.x + CLOCK.w / 2;
+    this.arc = { x: cx, y: CLOCK.y + 100, r: 82 };
+    const g = add(scene.add.graphics());
+    g.lineStyle(4, 0xe2c99a, 1).beginPath().arc(this.arc.x, this.arc.y, this.arc.r, Math.PI, 2 * Math.PI).strokePath();
+    this.dayText = add(scene.add.text(cx, CLOCK.y + 58, '', { ...INK, fontSize: '32px', fontStyle: '600' }).setOrigin(0.5));
+    this.phaseText = add(scene.add.text(cx, CLOCK.y + 90, '', { ...INK, fontSize: '22px', color: COLORS.inkSoft }).setOrigin(0.5));
+    this.sun = add(scene.add.circle(0, 0, 13, 0xffc83d).setStrokeStyle(4, 0xc9702a));
+
+    add(panel(scene, BOTTOM.x, BOTTOM.y, BOTTOM.w, BOTTOM.h, 'wood'));
+    this.nextText = add(scene.add.text(BOTTOM.x + 24, BOTTOM.y + 10, '', { ...TEXT, fontSize: '29px', color: COLORS.gold, strokeThickness: 0, wordWrap: { width: BOTTOM.w - 50 } }));
+    this.heldIcon = add(scene.add.image(BOTTOM.x + 44, BOTTOM.y + 71, ART, 0).setScale(3).setVisible(false));
+    this.heldText = add(scene.add.text(BOTTOM.x + 82, BOTTOM.y + 71, '', { ...TEXT, fontSize: '26px', color: COLORS.muted, strokeThickness: 0 }).setOrigin(0, 0.5));
+    this.heldArt = null;
+
+    add(panel(scene, COINS.x, COINS.y, COINS.w, COINS.h, 'wood'));
+    const coinY = COINS.y + COINS.h / 2;
+    this.coinIcon = add(scene.add.sprite(COINS.x + 52, coinY, ART, artFrame('coin_0')).setScale(3).play('coin'));
+    this.coinsText = add(scene.add.text(COINS.x + 92, coinY, '', { ...TEXT, fontSize: '38px', fontStyle: '600', color: COLORS.gold }).setOrigin(0, 0.5));
+    this.coinsShown = null;
+    add(scene.add.text(BOTTOM.x + BOTTOM.w - 24, BOTTOM.y + 71, t('hud.controls'), { ...TEXT, fontSize: '22px', color: '#b8a48c', strokeThickness: 0 }).setOrigin(1, 0.5));
+    this.muteText = add(scene.add.text(COINS.x + COINS.w / 2, COINS.y - 8, t('hud.muted'), { ...SMALL, color: COLORS.muted }).setOrigin(0.5, 1));
+
+    this.label = new ActionLabel(scene);
+  }
+
+  // orders: waiting customers, oldest first. dayProgress: 0..1 over the day.
+  update({ orders, next, held, label, coins, day, phase, dayProgress, night, muted }) {
+    this.renderOrders(orders);
+    this.nextText.setText(t('hud.next', { text: next }));
+    this.renderHeld(held);
+    if (coins !== this.coinsShown) {
+      if (this.coinsShown !== null) pop(this.scene, this.coinIcon, 3);
+      this.coinsShown = coins;
+      this.coinsText.setText(String(coins));
+    }
+    this.muteText.setVisible(muted);
+    this.dayText.setText(t('hud.day', { day }));
+    this.phaseText.setText(t(`hud.phase.${phase}`));
+    const angle = Math.PI * (1 + Math.min(1, dayProgress));
+    this.sun.setPosition(this.arc.x + Math.cos(angle) * this.arc.r, this.arc.y + Math.sin(angle) * this.arc.r);
+    this.sun.setFillStyle(night ? 0xf3f0ff : 0xffc83d).setStrokeStyle(4, night ? 0x8a8fc0 : 0xc9702a);
+    this.label.update(label);
+  }
+
+  renderHeld(held) {
+    const art = held?.art ?? null;
+    if (art !== this.heldArt) {
+      this.heldArt = art;
+      this.heldIcon.setVisible(!!art);
+      if (art) {
+        this.heldIcon.setFrame(artFrame(art));
+        pop(this.scene, this.heldIcon, 3);
+      }
+    }
+    this.heldText.setText(held ? held.text : t('hud.emptyHands'));
+    this.heldText.x = art ? BOTTOM.x + 82 : BOTTOM.x + 24;
+  }
+
+  // Rebuilt only when the list of waiting orders changes.
+  renderOrders(orders) {
+    const key = orders.map((c) => `${c.id}:${c.recipe}`).join(',');
+    if (key === this.ordersKey) return;
+    const old = this.ordersKey ? this.ordersKey.split(',') : [];
+    this.ordersKey = key;
+    this.cards.removeAll(true);
+    orders.slice(0, 3).forEach((c, i) => {
+      const card = this.card(c, CARD.x, CARD.y + i * (CARD.h + CARD.gap));
+      this.cards.add(card);
+      if (!old.includes(`${c.id}:${c.recipe}`)) {
+        card.x = -60;
+        card.alpha = 0;
+        this.scene.tweens.add({ targets: card, x: 0, alpha: 1, duration: 350, ease: 'Back.easeOut' });
+      }
+    });
+  }
+
+  card(c, x, y) {
+    const { scene } = this;
+    const { ingredients, cooker, dish } = recipeArt(c.recipe);
+    const parts = [
+      panel(scene, x, y, CARD.w, CARD.h),
+      scene.add.circle(x + 44, y + 56, 34, 0xf3dfb8),
+      artImage(scene, x + 44, y + 56, portraitArt(c.id), 4),
+      scene.add.text(x + 88, y + 8, t('hud.wants', { customer: CUSTOMERS[c.id].name }), { ...INK, fontSize: '22px', color: COLORS.inkSoft }),
+      scene.add.text(x + 88, y + 32, dishName({ recipe: c.recipe, cooked: true }), { ...INK, fontSize: '28px', fontStyle: '600' }),
+      artImage(scene, x + CARD.w - 40, y + 40, dish, 4),
+    ];
+    // Recipe as icons: a + b + c -> cooker.
+    let ix = x + 104;
+    const iy = y + 88;
+    ingredients.forEach((art, i) => {
+      if (i) parts.push(scene.add.text(ix - 20, iy, '+', { ...INK, fontSize: '22px', color: COLORS.inkSoft }).setOrigin(0.5));
+      parts.push(artImage(scene, ix, iy, art, 2));
+      ix += 40;
+    });
+    parts.push(scene.add.text(ix - 12, iy, '→', { ...INK, fontSize: '24px', color: COLORS.inkSoft }).setOrigin(0.5));
+    parts.push(artImage(scene, ix + 16, iy, cooker, 2));
+    return scene.add.container(0, 0, parts);
+  }
+}
+
+// "E  take milk" next to the chef; refusals show in a softer style without the key.
+class ActionLabel {
+  constructor(scene) {
+    this.g = scene.add.graphics().setDepth(DEPTH.label);
+    this.text = scene.add.text(0, 0, '', { ...INK, fontSize: '24px' }).setOrigin(0, 0.5).setDepth(DEPTH.label);
+    this.key = scene.add.text(0, 0, 'E', { ...INK, fontSize: '22px', fontStyle: '600' }).setOrigin(0.5).setDepth(DEPTH.label);
+    this.shown = null;
+    this.w = 0;
+  }
+
+  // label: { text, ok, x, y, minX, maxX } (x, y = top centre; minX/maxX = left/right limits) or null.
+  update(label) {
+    const objs = [this.g, this.text, this.key];
+    if (!label) {
+      this.shown = null;
+      for (const o of objs) o.setVisible(false);
+      return;
+    }
+    const sig = `${label.ok}|${label.text}`;
+    if (sig !== this.shown) {
+      this.shown = sig;
+      this.text.setText(label.text).setColor(label.ok ? COLORS.ink : COLORS.inkSoft).setFontStyle(label.ok ? '500' : 'italic');
+      const pad = label.ok ? 46 : 14;
+      this.w = pad + this.text.width + 16;
+      const g = this.g.clear();
+      g.fillStyle(0x1b1210, 0.22).fillRoundedRect(2, 4, this.w, 40, 20);
+      g.fillStyle(COLORS.paper, label.ok ? 0.97 : 0.85).fillRoundedRect(0, 0, this.w, 40, 20);
+      if (label.ok) {
+        g.fillStyle(0xf6c453).fillRoundedRect(6, 5, 30, 30, 8);
+        g.lineStyle(2, COLORS.paperEdge).strokeRoundedRect(6, 5, 30, 30, 8);
+      }
+      this.key.setVisible(label.ok);
+      this.pad = pad;
+    }
+    const x = Math.round(Math.max(label.minX ?? -Infinity, Math.min(label.x - this.w / 2, label.maxX - this.w)));
+    const y = Math.round(label.y);
+    this.g.setPosition(x, y).setVisible(true);
+    this.text.setPosition(x + this.pad, y + 20).setVisible(true);
+    this.key.setPosition(x + 21, y + 20);
+  }
+}
