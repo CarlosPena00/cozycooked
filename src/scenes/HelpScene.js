@@ -75,9 +75,11 @@ export class HelpScene extends Phaser.Scene {
     this.input.keyboard.once('keydown-Q', () => this.toTitle());
   }
 
-  // Back to the title: the day starts over next time, the coins picked up so far are kept.
+  // Back to the title: the day starts over next time, the coins picked up so far are kept
+  // (coins still on the floor or in the air count too, like at closing time).
   toTitle() {
-    writeSave({ coins: this.scene.get('kitchen').wallet });
+    const kitchen = this.scene.get('kitchen');
+    writeSave({ coins: kitchen.wallet + kitchen.coins.length });
     this.scene.stop('kitchen');
     this.scene.start('title');
   }

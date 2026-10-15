@@ -24,8 +24,8 @@ const MIST_AREAS = [
 ];
 const FIREFLIES = 10;
 // The overlay copy of the wash, relative to the normal one. The overlay does most of the work: it tints the teal lake
-// towards periwinkle and keeps its saturation, while a strong normal wash would grey it (max 1.25 at the 0.8 peak).
-const SUNSET_OVERLAY = 1.25;
+// towards periwinkle and keeps its saturation, while a strong normal wash would grey it (max 1.0 at the 0.8 peak).
+const SUNSET_OVERLAY = 1.0;
 const SUNSET_KITCHEN = 0.5; // how much of the wash is cut out over the lamplit kitchen
 const GLINT = 0xe8f4ee;
 const GLINT_GOLD = 0xffd690; // glints at sunset

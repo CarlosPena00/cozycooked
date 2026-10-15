@@ -52,8 +52,10 @@ export class TitleScene extends Phaser.Scene {
     }
     hud(this.add.text(32, 40, t('title.mute'), { ...note, fontSize: '24px', color: COLORS.muted }).setOrigin(0, 0.5));
 
+    // Keys pressed in the first moments (a second quick Q from the help screen) do not start the day yet.
+    const calmUntil = performance.now() + 400; // (the scene clock is stale right after a restart)
     const start = () => {
-      if (this.started) return;
+      if (this.started || performance.now() < calmUntil) return;
       this.started = true;
       audio.music();
       audio.play('click', { volume: 0.5 });

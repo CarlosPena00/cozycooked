@@ -2,8 +2,9 @@
 //
 // Gameplay events (this.events), for juice and audio:
 //   interact (station, action)   chop (station)   cookerAdd (station)   cookerDone (station)   fryerDone (station)
-//   plate (station)   assemble (station)   bin (station)   serve (customer, mood)   coinDrop (coin)   coinLand (coin)
-//   coinPick (coin)   phase (phaseId)   lanternsOn ()   customer (event, customer, extra)   nope (station): E did nothing
+//   plate (station)   assemble (station)   stack (station)   bin (station)   serve (customer, mood)   coinDrop (coin)
+//   coinLand (coin)   coinPick (coin)   phase (phaseId)   lanternsOn ()   customer (event, customer, extra)
+//   nope (station): E did nothing
 import {
   TILE, ART_SCALE, SPEED, CHOPS_NEEDED, COIN_PICK_RADIUS, PLAYER_START, INGREDIENTS, COOKERS, COOK_LOOPS, COOK_GRACE,
   DAY, DECK, KITCHEN, MAP, NEXT_FOR_INGREDIENT, RECIPES, ASSEMBLIES,
@@ -24,7 +25,7 @@ import {
 // Which extra event each action emits (besides `interact`).
 const ACTION_EVENTS = {
   chop: 'chop', addPot: 'cookerAdd', addFryer: 'cookerAdd', plate: 'plate', plateEarly: 'plate', plateMystery: 'plate',
-  makePastel: 'assemble', throwAway: 'bin',
+  makePastel: 'assemble', throwAway: 'bin', cheeseOnDough: 'stack', doughUnder: 'stack',
 };
 
 const lerp = (a, b, p) => a + (b - a) * p;
@@ -409,33 +410,47 @@ export class KitchenScene extends Phaser.Scene {
     // Coins wait patiently on the floor: they never hide what a waiting guest needs.
     if (this.coins.length && !orders.length) return t('next.coins');
     if (cooking) return t('next.cooking');
-    if (blocked) return t('next.freePot');
+    if (blocked) return t(blocked.progress >= 1 ? 'next.readyFree' : 'next.freePot', { station: upper(blocked) });
     if (orders.length) return t(`hint.${orders[0].recipe}`);
     // Something nobody ordered waits in a cooker: only a light nudge (it can wait, or become a mystery stew).
     if (waiting) return t('next.waiting', { station: upper(waiting) });
     return t('next.relax');
   }
 
-  // Cookers that matter for the next step: the first finished one, the first waiting for the rest of a recipe
-  // somebody ordered, whether anything is cooking, the first other waiting cooker (nobody ordered that), and
-  // `blocked`: a waiting cooker to free when every cooker the oldest order needs holds stray things.
+  // Cookers that matter for the next step: the first finished one (only food somebody ordered while guests wait),
+  // the first waiting for the rest of a recipe somebody ordered, whether anything is cooking, the first other waiting
+  // cooker (nobody ordered that), and `blocked`: a cooker to free (waiting, or done with food nobody ordered) when
+  // every cooker the oldest order needs is taken.
   cookerPlan() {
     const all = [...this.stations.values()].filter((s) => isCooker(s));
     const cookers = all.filter((s) => s.contents.length);
     const waiting = cookers.filter((s) => waitingFor(s));
-    const wanted = (s) => waitingFor(s) === 'missing' && this.orders.some((c) => c.recipe === cookerStatus(s).recipe);
+    const open = this.openRecipes();
+    const wanted = (s) => waitingFor(s) === 'missing' && open.includes(cookerStatus(s).recipe);
     const type = this.orders.length ? RECIPES[this.orders[0].recipe].cooker : null;
     const full = type && all.every((s) => s.type !== type || s.contents.length);
+    const done = cookers.filter((s) => s.progress >= 1);
+    const ordered = (s) => !this.orders.length || this.orders.some((c) => c.recipe === cookerStatus(s).recipe);
     return {
-      ready: cookers.find((s) => s.progress >= 1) ?? null,
+      ready: done.find(ordered) ?? null,
       wanted: waiting.find(wanted) ?? null,
       cooking: cookers.some((s) => s.progress < 1 && !waiting.includes(s)),
       waiting: waiting.find((s) => !wanted(s)) ?? null,
-      blocked: full ? waiting.find((s) => s.type === type) ?? null : null,
+      blocked: full ? [...waiting, ...done].find((s) => s.type === type) ?? null : null,
     };
   }
 
-  // Ingredient keys some order still needs, steps included (a pastel order needs dough, cheese and chopped cheese).
+  // Recipes of the orders no dish is on its way for yet: each cooking or finished cooker, and a plated dish in hand,
+  // covers one order of its recipe (so the hints never ask for a second brigadeiro nobody ordered).
+  openRecipes() {
+    const open = this.orders.map((c) => c.recipe);
+    const cookers = [...this.stations.values()].filter((s) => isCooker(s) && s.contents.length && !waitingFor(s));
+    const covered = [...cookers.map((s) => cookerStatus(s).recipe), this.held?.dish?.recipe];
+    for (const recipe of covered) if (open.includes(recipe)) open.splice(open.indexOf(recipe), 1);
+    return open;
+  }
+
+  // Ingredient keys some open order still needs, steps included (a pastel order needs dough, cheese and chopped cheese).
   neededKeys() {
     const keys = new Set();
     const add = (key) => {
@@ -443,7 +458,7 @@ export class KitchenScene extends Phaser.Scene {
       if (key.includes(':')) keys.add(key.split(':')[0]);
       ASSEMBLIES.find((a) => a.makes === key)?.needs.forEach(add);
     };
-    for (const o of this.orders) RECIPES[o.recipe].needs.forEach(add);
+    for (const recipe of this.openRecipes()) RECIPES[recipe].needs.forEach(add);
     return keys;
   }
 
@@ -457,8 +472,12 @@ export class KitchenScene extends Phaser.Scene {
     const hint = NEXT_FOR_INGREDIENT[key] ?? 'toPot';
     // Nobody ordered anything that uses it: no arrow into an empty pot, just a gentle way to set it aside.
     if (this.orders.length && !this.neededKeys().has(key)) return { hint: 'notNeeded', station: null };
-    // Raw cheese goes on an empty board, or on top of dough waiting there.
-    if (key === 'cheese') return { hint, station: !board.item || (ingredientKey(board.item) === 'dough' && !board.under) ? board : null };
+    // Raw cheese goes on an empty board, or on top of dough waiting there. A board busy chopping other cheese
+    // waits; anything else on it swaps into the chef's hands.
+    if (key === 'cheese') {
+      if (!board.item || (ingredientKey(board.item) === 'dough' && !board.under)) return { hint, station: board };
+      return ingredientKey(board.item) === 'cheese' ? { hint: 'cheeseWait', station: null } : { hint: 'cheeseSwap', station: board };
+    }
     if (key === 'dough') {
       const cheese = find((s) => s.item && ingredientKey(s.item) === 'cheese:chopped');
       if (cheese) return { hint, station: cheese };

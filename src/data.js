@@ -62,7 +62,7 @@ export const SOUNDS = Object.fromEntries(
 export const EVENT_SOUNDS = {
   interact: ['click', 0.35], nope: ['click', 0.22, 0.55], chop: ['chop', 0.45], cookerDone: ['pickup', 0.5], fryerDone: ['pickup', 0.5],
   plate: ['plate', 0.5], serve: ['serve', 0.45], coinLand: ['coin', 0.3], coinPick: ['pickup', 0.35],
-  cookerAdd: ['plop', 0.3], assemble: ['assemble', 0.35], bin: ['bin', 0.35], coinDrop: ['toss', 0.12],
+  cookerAdd: ['plop', 0.3], stack: ['plop', 0.3, 0.85], assemble: ['assemble', 0.35], bin: ['bin', 0.35], coinDrop: ['toss', 0.12],
 };
 // Soft loops while something cooks: cooker type -> [sound, volume]. The loop files are quiet (mean about -29 dBFS),
 // so near full volume they sit about 8 dB under the music (music mean -11 dBFS at MUSIC_VOLUME 0.3): audible, not loud.
@@ -283,6 +283,8 @@ export const STRINGS = {
     notOrdered: 'Not ordered - keep it on a counter, or serve it as a surprise!',
     serveDish: 'Take the {dish} to a SERVE WINDOW.',
     chopCheese: 'Put it on the CUTTING BOARD and press E 3 times.',
+    cheeseSwap: 'Swap it onto the CUTTING BOARD (you take what is there), then press E 3 times.',
+    cheeseWait: 'Chop the cheese on the CUTTING BOARD first - set this one on a counter meanwhile.',
     dough: 'Put it on chopped cheese to make a pastel.',
     choppedCheese: 'Add it to a POT for baiao, or put dough on it for a pastel.',
     rawPastel: 'Pop it in the FRYER.',
@@ -293,6 +295,7 @@ export const STRINGS = {
     freePot: 'Both POTS are taken - toss anything in one for a mystery stew to free it.',
     freePotHeld: 'Both POTS are taken - toss it in one for a mystery stew to free it.',
     ready: 'The {station} is ready! Press E on it to plate it.',
+    readyFree: 'Nobody ordered what is in the {station} - plate it to free the {station}.',
     coins: 'Coins! Walk over them to scoop them up.',
     cooking: 'Bubbling away. Take it out anytime, or start the next order.',
     missing: 'The {station} needs {items} for {dish}.',
@@ -319,7 +322,7 @@ export const STRINGS = {
     rules: 'Nothing burns and nobody is in a hurry. Take food out early if you like: customers find rustic, '
       + 'cozycooked dishes charming.',
     back: 'Esc / P / H: back to the kitchen',
-    quit: 'Q: back to the title (your coins are kept)',
+    quit: 'Q: back to the title - coins are kept, the day starts over',
   },
   diary: {
     title: 'Diary - Day {day}',

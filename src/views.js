@@ -469,9 +469,10 @@ export class CustomerView {
       body.setScale(S, blinking ? S * (1 - 1 / body.frame.height) : S);
       // A small happy hop once, when the chef brings this guest's dish near their window.
       const near = chef && chef.recipe === c.recipe && Math.abs(chef.y - tileCenter(c.ty)) < TILE * 0.6 && c.spot.tx * TILE - chef.x < TILE * 2.5;
-      if (near && !this.eager) this.scene.tweens.add({ targets: this, hop: px(2), duration: 130, yoyo: true, ease: 'Sine.easeOut' });
+      // A hop already in the air finishes on its own (restarting it mid-air would leave the guest floating).
+      if (near && !this.eager && !this.scene.tweens.isTweening(this)) this.scene.tweens.add({ targets: this, hop: px(2), duration: 130, yoyo: true, ease: 'Sine.easeOut' });
       this.eager = !!near;
-    }
+    } else if (!this.served) body.setScale(S); // walking or leaving: never keep a blink squash
     // Lower rows stand in front (neighbouring guests overlap a little, and more when they hop).
     body.setPosition(x, feet - this.lift - bob - Math.round(this.hop / S) * S).setDepth(DEPTH.customer + c.ty / 100);
     this.shadow.setPosition(x, feet - 2);
@@ -514,7 +515,7 @@ export class CustomerView {
 // rows above and below the middle spot stand a little further out (onto the deck margins), and stacked guests
 // never stand on each other's heads.
 const ROW_SPREAD = px(3);
-export const customerFeet = (ty) => tileCenter(ty) + TILE * 0.44 + (ty - DECK.spots[0].ty) * ROW_SPREAD;
+export const customerFeet = (ty) => Math.round(tileCenter(ty) + TILE * 0.44 + (ty - DECK.spots[0].ty) * ROW_SPREAD);
 
 // Customer portrait frame (for cards and the diary).
 export const portraitArt = (id) => `${id}_front_0`;
