@@ -16,6 +16,15 @@ export class DiaryScene extends Phaser.Scene {
     super('diary');
   }
 
+  // The last line of the page: never names a guest who did not come, nor cheers on a day with unserved guests.
+  closingLine(guests, served) {
+    if (!served.length) return pick(STRINGS.diary.closingQuiet);
+    const fits = (c) => (typeof c === 'string')
+      || (c.guest ? guests.some((g) => g.id === c.guest) : served.length === guests.length);
+    const line = pick(STRINGS.diary.closing.filter(fits));
+    return typeof line === 'string' ? line : line.text;
+  }
+
   // summary: { day, guests: [{ id, recipe, mood, dish }], coinsToday, coinsTotal }
   create(summary) {
     const { day, guests, coinsToday, coinsTotal } = summary;
@@ -62,7 +71,7 @@ export class DiaryScene extends Phaser.Scene {
     this.add.sprite(left - 40, ty - 4, ART, artFrame('coin_0')).setScale(3).play('coin');
     this.add.text(left, ty, `${t('diary.coinsToday', { n: coinsToday })}     ${t('diary.coinsTotal', { n: coinsTotal })}`, { ...ink, fontSize: '40px' }).setOrigin(0, 0.62);
     this.add.text(left, ty + LINE, `${t('diary.served', { n: served.length })}     ${t('diary.rustic', { n: served.filter((g) => g.mood === 'cozycooked').length })}`, ink).setOrigin(0, 0.62);
-    this.add.text(PAGE.x + PAGE.w / 2, ty + LINE * 2 + 10, pick(STRINGS.diary.closing), { ...ink, color: '#8a5a7a' }).setOrigin(0.5, 0.62);
+    this.add.text(PAGE.x + PAGE.w / 2, ty + LINE * 2 + 10, this.closingLine(guests, served), { ...ink, color: '#8a5a7a' }).setOrigin(0.5, 0.62);
     // The footer sits on the page, in ink, so it reads well (it pulses once input opens).
     const footer = this.add.text(PAGE.x + PAGE.w / 2, PAGE.y + PAGE.h - 52, t('diary.next', { day: day + 1 }), {
       fontFamily: HAND, fontSize: '40px', color: '#4a2f5a',

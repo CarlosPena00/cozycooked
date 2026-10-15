@@ -338,13 +338,19 @@ export const STRINGS = {
     served: 'Dishes served: {n}',
     rustic: 'Rustic dishes: {n}',
     next: 'Press any key to open day {day}',
+    // A line can name a guest (only used on days that guest came) or need everyone served.
     closing: [
       'The lake is quiet. The pots are clean. Good day.',
-      'Somewhere, a capybara is still thinking about lunch.',
+      { text: 'Somewhere, a capybara is still thinking about lunch.', guest: 'capybara' },
       'Nothing burned. Nothing ever does.',
       'The lanterns hum. Tomorrow smells like chocolate.',
-      'Everyone left a little happier than they came.',
-      'The sloth is still waving goodbye. Slowly.',
+      { text: 'Everyone left a little happier than they came.', allServed: true },
+      { text: 'The sloth is still waving goodbye. Slowly.', guest: 'sloth' },
+    ],
+    // Days when nobody got a plate.
+    closingQuiet: [
+      'A quiet day by the lake. The pots got a rest too.',
+      'The lanterns kept the deck company. Tomorrow, then.',
     ],
   },
 };
