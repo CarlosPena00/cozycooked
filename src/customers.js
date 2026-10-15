@@ -87,7 +87,8 @@ export class Customers {
   }
 
   // Scripted guests first, in order, each once it is their time of day (a returning maned wolf still comes at dusk);
-  // otherwise a random guest who is neither on the deck nor still expected.
+  // otherwise a random guest who is neither on the deck nor still expected, and, when someone else can come,
+  // not one of the last two arrivals either (so the day sees everybody, not six capybaras).
   nextGuest(t) {
     const onDeck = (id) => this.list.some((c) => c.id === id);
     const ready = (id) => !onDeck(id) && t >= CUSTOMERS[id].minTime;
@@ -95,7 +96,9 @@ export class Customers {
     if (i >= 0) return this.pending.splice(i, 1)[0];
     const ids = Object.keys(CUSTOMERS).filter((id) => ready(id) && !this.pending.some((g) => g.id === id));
     if (!ids.length) return null;
-    const id = pick(ids);
+    const recent = this.log.slice(-2).map((c) => c.id);
+    const fresh = ids.filter((id) => !recent.includes(id));
+    const id = pick(fresh.length ? fresh : ids);
     const recipe = Math.random() < DAY.arrivals.favoriteChance ? CUSTOMERS[id].favorite : pick(Object.keys(RECIPES));
     return { id, recipe };
   }

@@ -400,6 +400,9 @@ export class KitchenScene extends Phaser.Scene {
     if (held) return t(`next.${this.heldPlan(held).hint}`);
     const { ready, wanted, cooking, waiting, blocked } = this.cookerPlan();
     const upper = (s) => t(`station.${s.type}`).toUpperCase();
+    // A plated dish somebody ordered, set on a counter: it only needs carrying to the window.
+    const plated = this.platedForOrder();
+    if (plated) return t('next.onCounter', { dish: dishName(plated.item.dish) });
     // Finished food first: a guest may be waiting for it, and it frees the cooker.
     if (ready) return t('next.ready', { station: upper(ready) });
     // Half of a recipe someone ordered: say what is still missing (taking it out now would make a mystery stew).
@@ -407,6 +410,8 @@ export class KitchenScene extends Phaser.Scene {
       const { recipe, missing } = cookerStatus(wanted);
       return t('next.missing', { station: upper(wanted), items: missing.map(keyName).join(' + '), dish: RECIPES[recipe].name });
     }
+    // Cheese left on the board for an order: finish chopping it before starting anything else.
+    if (this.boardWork()) return t('next.finishChop');
     // Coins wait patiently on the floor: they never hide what a waiting guest needs.
     if (this.coins.length && !orders.length) return t('next.coins');
     if (cooking) return t('next.cooking');
@@ -418,7 +423,8 @@ export class KitchenScene extends Phaser.Scene {
   }
 
   // Cookers that matter for the next step: the first finished one (only food somebody ordered while guests wait),
-  // the first waiting for the rest of a recipe somebody ordered, whether anything is cooking, the first other waiting
+  // the first waiting for the rest of a recipe somebody ordered, whether anything is cooking (food nobody ordered only
+  // counts when it fills the last cooker the oldest order needs: it frees soon), the first other waiting
   // cooker (nobody ordered that), and `blocked`: a cooker to free (waiting, or done with food nobody ordered) when
   // every cooker the oldest order needs is taken.
   cookerPlan() {
@@ -434,20 +440,35 @@ export class KitchenScene extends Phaser.Scene {
     return {
       ready: done.find(ordered) ?? null,
       wanted: waiting.find(wanted) ?? null,
-      cooking: cookers.some((s) => s.progress < 1 && !waiting.includes(s)),
+      cooking: cookers.some((s) => s.progress < 1 && !waiting.includes(s) && (ordered(s) || (full && s.type === type))),
       waiting: waiting.find((s) => !wanted(s)) ?? null,
       blocked: full ? [...waiting, ...done].find((s) => s.type === type) ?? null : null,
     };
   }
 
-  // Recipes of the orders no dish is on its way for yet: each cooking or finished cooker, and a plated dish in hand,
-  // covers one order of its recipe (so the hints never ask for a second brigadeiro nobody ordered).
+  // Recipes of the orders no dish is on its way for yet: each cooking or finished cooker, a plated dish in hand and
+  // each plated dish on a counter cover one order of their recipe (so the hints never ask for a second brigadeiro).
   openRecipes() {
     const open = this.orders.map((c) => c.recipe);
-    const cookers = [...this.stations.values()].filter((s) => isCooker(s) && s.contents.length && !waitingFor(s));
-    const covered = [...cookers.map((s) => cookerStatus(s).recipe), this.held?.dish?.recipe];
+    const all = [...this.stations.values()];
+    const cookers = all.filter((s) => isCooker(s) && s.contents.length && !waitingFor(s));
+    const plates = all.filter((s) => s.item?.dish);
+    const covered = [...cookers.map((s) => cookerStatus(s).recipe), ...plates.map((s) => s.item.dish.recipe), this.held?.dish?.recipe];
     for (const recipe of covered) if (open.includes(recipe)) open.splice(open.indexOf(recipe), 1);
     return open;
+  }
+
+  // The first counter holding a plated dish somebody ordered, or null.
+  platedForOrder() {
+    const ordered = (s) => s.item?.dish && this.orders.some((c) => c.recipe === s.item.dish.recipe);
+    return [...this.stations.values()].find(ordered) ?? null;
+  }
+
+  // The board, when it holds raw cheese (alone or on dough) that an open order still needs chopped; else null.
+  boardWork() {
+    const board = [...this.stations.values()].find((s) => s.type === 'board');
+    const cheese = board.item && ingredientKey(board.item) === 'cheese';
+    return cheese && this.neededKeys().has('cheese:chopped') ? board : null;
   }
 
   // Ingredient keys some open order still needs, steps included (a pastel order needs dough, cheese and chopped cheese).
@@ -506,8 +527,12 @@ export class KitchenScene extends Phaser.Scene {
     if (held) return this.heldPlan(held).station;
     // Same order as nextStep().
     const { ready, wanted, cooking, blocked } = this.cookerPlan();
+    const plated = this.platedForOrder();
+    if (plated) return plated;
     if (ready) return ready;
     if (wanted) return this.sourceOf(cookerStatus(wanted).missing[0]);
+    const board = this.boardWork();
+    if (board) return board;
     if (cooking || !orders.length) return null;
     if (blocked) return blocked;
     return this.sourceOf(RECIPES[orders[0].recipe].needs[0]);

@@ -29,8 +29,12 @@ export class DiaryScene extends Phaser.Scene {
     const left = PAGE.x + 150;
     this.add.text(PAGE.x + PAGE.w / 2, PAGE.y + 70, t('diary.title', { day }), { ...ink, fontSize: '64px', color: '#5a3a6a' }).setOrigin(0.5);
 
+    // One line per visit: a species already on the page reads "Another cane toad ...".
+    const seen = new Set();
     const lines = guests.slice(0, MAX_LINES).map((g) => {
-      const customer = CUSTOMERS[g.id].name;
+      const name = CUSTOMERS[g.id].name;
+      const customer = seen.has(g.id) ? t('diary.another', { customer: name.toLowerCase() }) : name;
+      seen.add(g.id);
       if (!g.mood) return { g, text: t('diary.unserved', { customer }) };
       return { g, text: t('diary.line', { customer, dish: dishName(g.dish), mood: STRINGS.diary.mood[g.mood] }) };
     });

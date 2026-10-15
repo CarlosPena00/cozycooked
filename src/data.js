@@ -100,7 +100,7 @@ export const COOK_GRACE = 0.4;
 // Ingredient keys are "kind" or "kind:chopped". Exact match only; anything else from a pot is a mystery stew.
 export const RECIPES = {
   brigadeiro: { name: 'Brigadeiro', cooker: 'pot', needs: ['milk', 'chocolate'], art: 'dish_brigadeiro', fill: 'potfill_brigadeiro' },
-  baiao: { name: 'Baiao de dois', cooker: 'pot', needs: ['rice', 'beans', 'cheese:chopped'], art: 'dish_baiao', fill: 'potfill_baiao' },
+  baiao: { name: 'Baião de dois', cooker: 'pot', needs: ['rice', 'beans', 'cheese:chopped'], art: 'dish_baiao', fill: 'potfill_baiao' },
   pastel: { name: 'Pastel', cooker: 'fryer', needs: ['pastel'], art: 'dish_pastel' },
 };
 
@@ -286,7 +286,7 @@ export const STRINGS = {
     cheeseSwap: 'Swap it onto the CUTTING BOARD (you take what is there), then press E 3 times.',
     cheeseWait: 'Chop the cheese on the CUTTING BOARD first - set this one on a counter meanwhile.',
     dough: 'Put it on chopped cheese to make a pastel.',
-    choppedCheese: 'Add it to a POT for baiao, or put dough on it for a pastel.',
+    choppedCheese: 'Add it to a POT for baião, or put dough on it for a pastel.',
     rawPastel: 'Pop it in the FRYER.',
     toPot: 'Put it in a POT with the rest of its recipe.',
     doughBoard: 'Chop some cheese first - the dough can wait under it on the CUTTING BOARD.',
@@ -294,6 +294,8 @@ export const STRINGS = {
     notNeeded: 'Nobody ordered that - set it on a counter, or toss it in the BIN.',
     freePot: 'Both POTS are taken - toss anything in one for a mystery stew to free it.',
     freePotHeld: 'Both POTS are taken - toss it in one for a mystery stew to free it.',
+    onCounter: 'The {dish} on the COUNTER is ready - take it to a SERVE WINDOW.',
+    finishChop: 'Finish chopping the cheese on the CUTTING BOARD (press E).',
     ready: 'The {station} is ready! Press E on it to plate it.',
     readyFree: 'Nobody ordered what is in the {station} - plate it to free the {station}.',
     coins: 'Coins! Walk over them to scoop them up.',
@@ -305,7 +307,7 @@ export const STRINGS = {
   // "Next:" hint for the oldest order when the chef has free hands and nothing is cooking.
   hint: {
     brigadeiro: 'Brigadeiro: milk + chocolate (left crates) in a POT.',
-    baiao: 'Baiao: rice + beans + chopped cheese in a POT.',
+    baiao: 'Baião: rice + beans + chopped cheese in a POT.',
     pastel: 'Pastel: chop cheese, put dough on it, then FRY it.',
   },
   help: {
@@ -329,6 +331,7 @@ export const STRINGS = {
     line: '{customer} had {dish}: {mood}.',
     mood: { happy: 'loved it', cozycooked: 'found it charmingly rustic', surprised: 'was happily surprised' },
     unserved: '{customer} will come back tomorrow.',
+    another: 'Another {customer}', // the same species again on the page (lower-case name)
     more: '...and {n} more',
     coinsToday: 'Coins today: {n}',
     coinsTotal: 'Total coins: {n}',
