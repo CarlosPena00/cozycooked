@@ -2,11 +2,11 @@
 import { audio } from '../audio.js';
 import { loadSave } from '../save.js';
 import { t } from '../text.js';
-import { TILE, ART_SCALE, MAP, DECK, CUSTOMERS } from '../data.js';
+import { TILE, ART_SCALE, MAP, CRATES, DECK, CUSTOMERS } from '../data.js';
 import { addMapImage } from '../map.js';
 import { Mood } from '../mood.js';
 import { panel } from '../hud.js';
-import { TEXT, INK, COLORS, DEPTH, ART, artFrame, artImage, tileCenter, customerFeet } from '../views.js';
+import { TEXT, INK, COLORS, DEPTH, ART, artFrame, artImage, tileCenter, customerFeet, crateIcon } from '../views.js';
 
 const DUSK = 262; // day time used for the backdrop's light
 const [SPOT_A, SPOT_WALK, SPOT_B] = DECK.spots; // two regulars wait, the sloth strolls in along the free row
@@ -78,9 +78,12 @@ export class TitleScene extends Phaser.Scene {
     if (sloth.x < tileCenter(SPOT_WALK.tx + 1)) sloth.x = tileCenter(DECK.enterX);
   }
 
-  // A few regulars hanging out on the deck, and the chef in the kitchen.
+  // The crates' ingredient cards, a few regulars hanging out on the deck, and the chef in the kitchen.
   cast() {
     const S = ART_SCALE;
+    MAP.forEach((row, ty) => [...row].forEach((ch, tx) => {
+      if (CRATES[ch]) crateIcon(this, tx, ty, CRATES[ch]);
+    }));
     const animal = (id, { tx, ty }, anim) => this.add.sprite(tileCenter(tx), customerFeet(ty), ART, artFrame(`${id}_front_0`))
       .setOrigin(0.5, 1).setScale(S).setDepth(DEPTH.customer).play(anim);
     animal('capybara', SPOT_A, 'capybara_front');

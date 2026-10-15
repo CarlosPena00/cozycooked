@@ -208,7 +208,7 @@ export const DAY = {
   // rose at sunset); mist: dawn mist over the lake; sunset: the rose-to-amber golden hour; night: the blue night mask (the kitchen
   // and the deck stay almost clear of it, so only the far lake gets dim).
   // The night only starts once the golden hour has peaked, so blue never muddies the amber and rose.
-  sky: keys([[0, 0xbec8eb, 0.14], [30, 0xffe2b0, 0], [200, 0xffb060, 0], [228, 0xf58aa0, 0.06], [250, 0xe87a9a, 0.08], [268, 0x8a6ab0, 0.05], [280, 0x6a5aa8, 0]]),
+  sky: keys([[0, 0xbec8eb, 0.2], [30, 0xffe2b0, 0], [200, 0xffb060, 0], [228, 0xf58aa0, 0.06], [250, 0xe87a9a, 0.08], [268, 0x8a6ab0, 0.05], [280, 0x6a5aa8, 0]]),
   mist: keys([[0, 1], [18, 0.75], [40, 0]]),
   sunset: keys([[195, 0], [222, 0.8], [250, 0.8], [280, 0]]),
   night: keys([[0, 0.2], [30, 0], [242, 0], [268, 0.42], [285, 0.6], [300, 0.64]]),
@@ -291,6 +291,7 @@ export const STRINGS = {
     night: 'The day is done. Good night, chef!',
     keepDish: 'Set it on a counter. Someone will want it soon.',
     keepDishLate: 'Nobody else is coming today - set it on a counter, or toss it in the BIN.',
+    putBackLate: 'Nobody else is coming today - put it back in its crate, or toss it in the BIN.',
     notOrdered: 'Not ordered - keep it on a counter, or serve it as a surprise!',
     serveDish: 'Take the {dish} to a SERVE WINDOW.',
     chopCheese: 'Put it on the CUTTING BOARD and press E 3 times.',
@@ -345,7 +346,8 @@ export const STRINGS = {
     line: '{customer} had {dish}: {mood}.',
     mood: { happy: 'loved it', cozycooked: 'found it charmingly rustic', surprised: 'was happily surprised' },
     unserved: '{customer} will come back tomorrow.',
-    another: 'Another {customer}', // the same species again on the page (lower-case name)
+    // The same species again on the page (lower-case name): its 2nd, 3rd, 4th... visit, round and round.
+    another: ['Another {customer}', 'One more {customer}', 'And another {customer}'],
     more: '...and {n} more',
     coinsToday: 'Coins today: {n}',
     coinsTotal: 'Total coins: {n}',

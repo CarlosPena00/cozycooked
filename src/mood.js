@@ -184,11 +184,15 @@ export class Mood {
   }
 
   // Tiny cream dashes (1 art px tall) that fade in and out on open water, each time somewhere else.
-  // Only rows 2-9: rows 0-1 sit under the HUD cards and rows 10-11 under the bottom panel.
+  // Only rows 2-9: rows 0-1 sit under the HUD cards and rows 10-11 under the bottom panel. Never on the water tiles
+  // the house is painted over (its left wall, the roof above and the stilts below) or under a deck edge.
   makeGlints(n) {
+    const { left, top, right, bottom } = KITCHEN;
+    const house = (tx, ty) => tx >= left - 1 && tx <= right && ty >= top - 1 && ty <= bottom + 1;
     const water = [];
     MAP.forEach((row, ty) => [...row].forEach((ch, tx) => {
-      if (ch === '~' && ty >= 2 && ty <= 9 && tx >= 2 && tx < MAP[0].length - 1) water.push([tx, ty]);
+      const open = ch === '~' && !house(tx, ty) && MAP[ty - 1]?.[tx] !== '_';
+      if (open && ty >= 2 && ty <= 9 && tx >= 2 && tx < MAP[0].length - 1) water.push([tx, ty]);
     }));
     return Array.from({ length: n }, (_, i) => {
       const glint = this.scene.add.rectangle(0, 0, 4 * S, S, GLINT, 1).setDepth(DEPTH.glint).setAlpha(0);

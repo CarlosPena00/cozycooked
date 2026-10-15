@@ -7,7 +7,7 @@
 //   nope (station): E did nothing
 import {
   TILE, ART_SCALE, SPEED, CHOPS_NEEDED, COIN_PICK_RADIUS, PLAYER_START, INGREDIENTS, COOKERS, COOK_LOOPS, COOK_GRACE,
-  DAY, DECK, KITCHEN, MAP, NEXT_FOR_INGREDIENT, RECIPES, ASSEMBLIES, GUIDE_DISHES,
+  CRATES, DAY, DECK, KITCHEN, MAP, NEXT_FOR_INGREDIENT, RECIPES, ASSEMBLIES, GUIDE_DISHES,
 } from '../data.js';
 import { resolve, cook, isCooker, ingredientKey, cookerStatus, waitingFor } from '../stations.js';
 import { Day } from '../day.js';
@@ -421,7 +421,7 @@ export class KitchenScene extends Phaser.Scene {
     if (this.boardWork()) return t('next.finishChop');
     // Coins wait patiently on the floor: they never hide what a waiting guest needs.
     if (this.coins.length && !orders.length) return t('next.coins');
-    if (cooking) return t(this.customers.coming || orders.length ? 'next.cooking' : 'next.cookingLate');
+    if (cooking) return t(this.customers.coming || this.openRecipes().length ? 'next.cooking' : 'next.cookingLate');
     if (blocked) return t(blocked.progress >= 1 ? 'next.readyFree' : 'next.freePot', { station: upper(blocked) });
     if (orders.length) return t(`hint.${orders[0].recipe}`);
     // Something nobody ordered waits in a cooker: only a light nudge (it can wait, or become a mystery stew).
@@ -511,6 +511,10 @@ export class KitchenScene extends Phaser.Scene {
     const hint = NEXT_FOR_INGREDIENT[key] ?? 'toPot';
     // Nobody ordered anything that uses it: no arrow into an empty pot, just a gentle way to set it aside.
     if (this.orders.length && !this.neededKeys().has(key)) return { hint: 'notNeeded', station: null };
+    // Late in the day with no orders left, nothing will need it either: back in its crate, or the bin.
+    if (!this.orders.length && !this.customers.coming) {
+      return { hint: Object.values(CRATES).includes(key) ? 'putBackLate' : 'keepDishLate', station: null };
+    }
     // Raw cheese goes on an empty board, or on top of dough waiting there. A board busy chopping other cheese
     // waits; anything else on it swaps into the chef's hands.
     if (key === 'cheese') {
@@ -596,7 +600,8 @@ export class KitchenScene extends Phaser.Scene {
   // or above the head when the station is below (so it never hides the station).
   actionLabel() {
     const { target, held } = this;
-    if (!target) return null;
+    // Once closing starts the day is over: the "Next:" hint says good night, the stations stay quiet.
+    if (!target || this.closing) return null;
     const res = resolve(target, held, this.context());
     // Right after E did nothing here, the reason shows (while it is still the reason), even in a quiet moment.
     const { flash } = this;

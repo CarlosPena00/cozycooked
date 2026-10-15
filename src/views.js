@@ -35,6 +35,11 @@ export const mixColor = (a, b, p) => [16, 8, 0].reduce((c, s) => c | (Math.round
 export const artFrame = (name) => ART_FRAMES[name];
 export const artImage = (scene, x, y, name, scale = S) => scene.add.image(x, y, ART, ART_FRAMES[name]).setScale(scale);
 
+// Crates: a small picture of what is inside on the cream front card, readable from across the room
+// (half the world's art scale, the finest the art goes). The title backdrop draws them too.
+export const crateIcon = (scene, tx, ty, kind) => artImage(scene, tileCenter(tx), tileCenter(ty) + px(5), INGREDIENTS[kind].art, S / 2)
+  .setDepth(DEPTH.stationItem);
+
 // Art frame names for items: ingredients (raw/chopped) and plated dishes (cooked/cozycooked).
 export function itemArt(item) {
   return item.type === 'ingredient' ? ingredientArt(item.kind, item.chopped) : dishArt(item.dish);
@@ -240,9 +245,7 @@ export class StationView {
     this.barBack = [[this.barWidth + 12, 24, 0x3b2420], [this.barWidth + 6, 18, COLORS.paper]]
       .map(([w, h, color]) => scene.add.rectangle(x, barY, w, h, color).setDepth(DEPTH.stationInfo).setVisible(false));
     this.bar = scene.add.rectangle(x - this.barWidth / 2, barY, 0, 12, 0xf0c04a).setOrigin(0, 0.5).setDepth(DEPTH.stationInfo);
-    // Crates: a small picture of what is inside on the cream front card, readable from across the room
-    // (half the world's art scale, the finest the art goes).
-    if (station.type === 'crate') artImage(scene, x, y + px(5), INGREDIENTS[station.kind].art, S / 2).setDepth(DEPTH.stationItem);
+    if (station.type === 'crate') crateIcon(scene, station.tx, station.ty, station.kind);
     this.cooker = isCooker(station);
     if (!this.cooker) return;
     this.overlay = artImage(scene, x, y, 'potfill_broth').setDepth(DEPTH.stationItem).setVisible(false);

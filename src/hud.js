@@ -40,11 +40,14 @@ export class Hud {
 
     this.clock = add(panel(scene, CLOCK.x, CLOCK.y, CLOCK.w, CLOCK.h));
     const cx = CLOCK.x + CLOCK.w / 2;
-    this.arc = { x: cx, y: CLOCK.y + 100, r: 82 };
+    // A wide, low arc (half an ellipse), so the sun and moon never touch "Day N" on their way over the top.
+    this.arc = { x: cx, y: CLOCK.y + 98, rx: 104, ry: 77 };
+    const arcPoint = (p) => ({ x: this.arc.x - Math.cos(Math.PI * p) * this.arc.rx, y: this.arc.y - Math.sin(Math.PI * p) * this.arc.ry });
+    this.arcPoint = arcPoint;
     const g = add(scene.add.graphics());
-    g.lineStyle(4, 0xe2c99a, 1).beginPath().arc(this.arc.x, this.arc.y, this.arc.r, Math.PI, 2 * Math.PI).strokePath();
-    this.dayText = add(scene.add.text(cx, CLOCK.y + 58, '', { ...INK, fontSize: '32px', fontStyle: '600' }).setOrigin(0.5));
-    this.phaseText = add(scene.add.text(cx, CLOCK.y + 90, '', { ...INK, fontSize: '22px', color: COLORS.inkSoft }).setOrigin(0.5));
+    g.lineStyle(4, 0xe2c99a, 1).strokePoints(Array.from({ length: 49 }, (_, i) => arcPoint(i / 48)));
+    this.dayText = add(scene.add.text(cx, CLOCK.y + 66, '', { ...INK, fontSize: '30px', fontStyle: '600' }).setOrigin(0.5));
+    this.phaseText = add(scene.add.text(cx, CLOCK.y + 95, '', { ...INK, fontSize: '22px', color: COLORS.inkSoft }).setOrigin(0.5));
     this.sun = add(scene.add.circle(0, 0, 13, 0xffc83d).setStrokeStyle(4, 0xc9702a));
 
     add(panel(scene, BOTTOM.x, BOTTOM.y, BOTTOM.w, BOTTOM.h, 'wood'));
@@ -80,8 +83,8 @@ export class Hud {
     this.muteText.setVisible(muted);
     this.dayText.setText(t('hud.day', { day }));
     this.phaseText.setText(t(`hud.phase.${phase}`));
-    const angle = Math.PI * (1 + Math.min(1, dayProgress));
-    this.sun.setPosition(this.arc.x + Math.cos(angle) * this.arc.r, this.arc.y + Math.sin(angle) * this.arc.r);
+    const { x, y } = this.arcPoint(Math.min(1, dayProgress));
+    this.sun.setPosition(x, y);
     this.sun.setFillStyle(night ? 0xf3f0ff : 0xffc83d).setStrokeStyle(4, night ? 0x8a8fc0 : 0xc9702a);
     this.label.update(label);
   }
