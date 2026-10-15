@@ -387,6 +387,11 @@ export class GuideArrow {
     const away = TILE * 0.86 - bob;
     g.setPosition(tileCenter(tx) - dx * away, tileCenter(ty) - dy * away).setRotation(Math.atan2(dx, -dy));
   }
+
+  // Retire the arrow: a slow fade where it is, then it is gone.
+  fadeOut() {
+    this.scene.tweens.add({ targets: this.g, alpha: 0, duration: 1200, ease: 'Sine.easeInOut', onComplete: () => this.g.destroy() });
+  }
 }
 
 // The chef: 2-frame walk in 3 directions (side frames face right, flipped for left), a soft shadow,

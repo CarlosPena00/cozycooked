@@ -67,6 +67,11 @@ export class Customers {
     this.gap = row[Math.min(this.staying, row.length - 1)] * between(1 - jitter, 1 + jitter);
   }
 
+  // Can anybody still arrive today?
+  get coming() {
+    return !this.closed && this.t <= DAY.arrivals.last;
+  }
+
   get empty() {
     return this.list.length === 0;
   }
@@ -88,7 +93,8 @@ export class Customers {
 
   // Scripted guests first, in order, each once it is their time of day (a returning maned wolf still comes at dusk);
   // otherwise a random guest who is neither on the deck nor still expected, and, when someone else can come,
-  // not one of the last two arrivals either (so the day sees everybody, not six capybaras).
+  // not one of the last two arrivals either (so the day sees everybody, not six capybaras). When only those two
+  // can come, the older one does (never the same guest twice in a row).
   nextGuest(t) {
     const onDeck = (id) => this.list.some((c) => c.id === id);
     const ready = (id) => !onDeck(id) && t >= CUSTOMERS[id].minTime;
@@ -98,7 +104,8 @@ export class Customers {
     if (!ids.length) return null;
     const recent = this.log.slice(-2).map((c) => c.id);
     const fresh = ids.filter((id) => !recent.includes(id));
-    const id = pick(fresh.length ? fresh : ids);
+    const older = ids.filter((id) => id !== recent.at(-1));
+    const id = pick(fresh.length ? fresh : older.length ? older : ids);
     const recipe = Math.random() < DAY.arrivals.favoriteChance ? CUSTOMERS[id].favorite : pick(Object.keys(RECIPES));
     return { id, recipe };
   }

@@ -117,6 +117,9 @@ export const MYSTERY = { name: 'Mystery stew', art: 'dish_mystery', fill: 'potfi
 
 export const COINS = { happy: 3, cozycooked: 2, surprised: 1, favoriteBonus: 1 };
 
+// The guide arrow helps until the chef has served this many dishes (ever, counted in the save).
+export const GUIDE_DISHES = 4;
+
 // The deck outside the serve windows. Waiting spots are filled in this order (middle first); each one faces the
 // serve window at tx - 1. Guests walk in and out along their spot's row, between enterX and the spot.
 // platform/pier are tile boxes (inclusive) for art and decor; rows 4 and 8 of the platform are margins nobody walks on.
@@ -137,6 +140,12 @@ export const LANTERNS = {
   posts: [{ tx: 13, ty: 4 }, { tx: 16, ty: 4 }],
   walls: [{ tx: 5, ty: 3 }, { tx: 12, ty: 3 }, { tx: 9, ty: 8 }],
 };
+
+// Day timings are written on a 300 s clock and scaled by DAY_SCALE, the one knob for the length of a day (0.8: 240 s).
+// Arrival gaps stay in real seconds, so a shorter day ends sooner instead of getting busier.
+export const DAY_SCALE = 0.8;
+const clock = (s) => s * DAY_SCALE;
+const keys = (list) => list.map(([s, ...v]) => [clock(s), ...v]);
 
 // Customers. Art frames are `<id>_front_0/1` (waiting), `<id>_side_0/1` (walking), `<id>_happy`.
 // speed is in tiles/s; minTime is the day time (s) before they can show up.
@@ -174,7 +183,7 @@ export const CUSTOMERS = {
     bye: 'Ribbit. Good night, chef.',
   },
   wolf: {
-    name: 'Maned wolf', favorite: 'brigadeiro', speed: 1.8, minTime: 180,
+    name: 'Maned wolf', favorite: 'brigadeiro', speed: 1.8, minTime: clock(180),
     happy: ["Oh... it's lovely. Thank you.", 'Sweet. Like a sunset.', "I'll come back... if that's ok."],
     cozycooked: ['Still gooey... I like gooey.', "It's soft. So am I.", "Charming. Don't change a thing."],
     surprised: ['Oh. Um. This is nice too.', "I'm too shy to complain. And it's good.", 'A surprise... how brave.'],
@@ -183,29 +192,30 @@ export const CUSTOMERS = {
   },
 };
 
-// Day clock in seconds. Phases start at `start`. `light` is [t, daylight 0..1] keyframes (linear in between).
+// Day clock in seconds (written on the 300 s clock, see DAY_SCALE). Phases start at `start`.
+// `light` is [t, daylight 0..1] keyframes (linear in between).
 export const DAY = {
-  length: 300,
+  length: clock(300),
   phases: [
     { id: 'dawn', start: 0 },
-    { id: 'day', start: 30 },
-    { id: 'sunset', start: 210 },
-    { id: 'night', start: 265 }, // the clock says Night once the blue has taken over from the golden hour
+    { id: 'day', start: clock(30) },
+    { id: 'sunset', start: clock(210) },
+    { id: 'night', start: clock(265) }, // the clock says Night once the blue has taken over from the golden hour
   ],
-  lanterns: 255, // lanterns and string lights switch on at dusk, a little before the clock says Night
-  light: [[0, 0.6], [30, 1], [210, 1], [255, 0.6], [300, 0.25]],
+  lanterns: clock(255), // lanterns and string lights switch on at dusk, a little before the clock says Night
+  light: keys([[0, 0.6], [30, 1], [210, 1], [255, 0.6], [300, 0.25]]),
   // Looks (mood.js), all [t, value] keyframes, linear in between. sky: a colour wash [t, color, alpha] (dawn lavender,
   // rose at sunset); mist: dawn mist over the lake; sunset: the rose-to-amber golden hour; night: the blue night mask (the kitchen
   // and the deck stay almost clear of it, so only the far lake gets dim).
   // The night only starts once the golden hour has peaked, so blue never muddies the amber and rose.
-  sky: [[0, 0xbec8eb, 0.14], [30, 0xffe2b0, 0], [200, 0xffb060, 0], [228, 0xf58aa0, 0.06], [250, 0xe87a9a, 0.08], [268, 0x8a6ab0, 0.05], [280, 0x6a5aa8, 0]],
-  mist: [[0, 1], [18, 0.75], [40, 0]],
-  sunset: [[195, 0], [222, 0.8], [250, 0.8], [280, 0]],
-  night: [[0, 0.2], [30, 0], [242, 0], [268, 0.42], [285, 0.6], [300, 0.64]],
+  sky: keys([[0, 0xbec8eb, 0.14], [30, 0xffe2b0, 0], [200, 0xffb060, 0], [228, 0xf58aa0, 0.06], [250, 0xe87a9a, 0.08], [268, 0x8a6ab0, 0.05], [280, 0x6a5aa8, 0]]),
+  mist: keys([[0, 1], [18, 0.75], [40, 0]]),
+  sunset: keys([[195, 0], [222, 0.8], [250, 0.8], [280, 0]]),
+  night: keys([[0, 0.2], [30, 0], [242, 0], [268, 0.42], [285, 0.6], [300, 0.64]]),
   closingMaxSeconds: 4, // after closing starts, the diary appears when the deck is empty or after this
   // Calm gaps: a guest arrives `gaps[day][n]` seconds (+-jitter) after the latest arrival or departure,
   // n = guests on the deck that are not leaving. Rows: day 1, day 2, day 3+. No arrivals after `last`.
-  arrivals: { last: 240, gaps: [[1, 8, 24], [1, 7, 20], [1, 6, 16]], jitter: 0.15, favoriteChance: 0.6 },
+  arrivals: { last: clock(240), gaps: [[1, 8, 24], [1, 7, 20], [1, 6, 16]], jitter: 0.15, favoriteChance: 0.6 },
   maxCustomers: 3,
   // Day 1 tutorial ramp: the first three guests and their orders.
   script: [
@@ -280,6 +290,7 @@ export const STRINGS = {
   next: {
     night: 'The day is done. Good night, chef!',
     keepDish: 'Set it on a counter. Someone will want it soon.',
+    keepDishLate: 'Nobody else is coming today - set it on a counter, or toss it in the BIN.',
     notOrdered: 'Not ordered - keep it on a counter, or serve it as a surprise!',
     serveDish: 'Take the {dish} to a SERVE WINDOW.',
     chopCheese: 'Put it on the CUTTING BOARD and press E 3 times.',
@@ -287,6 +298,7 @@ export const STRINGS = {
     cheeseWait: 'Chop the cheese on the CUTTING BOARD first - set this one on a counter meanwhile.',
     dough: 'Put it on chopped cheese to make a pastel.',
     choppedCheese: 'Add it to a POT for baião, or put dough on it for a pastel.',
+    choppedPastel: 'Set it down, then put dough on it for a pastel.',
     rawPastel: 'Pop it in the FRYER.',
     toPot: 'Put it in a POT with the rest of its recipe.',
     doughBoard: 'Chop some cheese first - the dough can wait under it on the CUTTING BOARD.',
@@ -300,9 +312,11 @@ export const STRINGS = {
     readyFree: 'Nobody ordered what is in the {station} - plate it to free the {station}.',
     coins: 'Coins! Walk over them to scoop them up.',
     cooking: 'Bubbling away. Take it out anytime, or start the next order.',
+    cookingLate: 'Bubbling away. Take it out anytime - nobody else is coming today.',
     missing: 'The {station} needs {items} for {dish}.',
     waiting: 'The {station} waits for more - or toss in anything for a mystery stew.',
     relax: 'Relax and enjoy the lake. Guests are on their way.',
+    relaxLate: 'Relax and enjoy the lake. The day is winding down.',
   },
   // "Next:" hint for the oldest order when the chef has free hands and nothing is cooking.
   hint: {

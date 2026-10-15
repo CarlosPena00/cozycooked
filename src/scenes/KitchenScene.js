@@ -7,7 +7,7 @@
 //   nope (station): E did nothing
 import {
   TILE, ART_SCALE, SPEED, CHOPS_NEEDED, COIN_PICK_RADIUS, PLAYER_START, INGREDIENTS, COOKERS, COOK_LOOPS, COOK_GRACE,
-  DAY, DECK, KITCHEN, MAP, NEXT_FOR_INGREDIENT, RECIPES, ASSEMBLIES,
+  DAY, DECK, KITCHEN, MAP, NEXT_FOR_INGREDIENT, RECIPES, ASSEMBLIES, GUIDE_DISHES,
 } from '../data.js';
 import { resolve, cook, isCooker, ingredientKey, cookerStatus, waitingFor } from '../stations.js';
 import { Day } from '../day.js';
@@ -16,7 +16,7 @@ import { buildKitchen } from '../map.js';
 import { Hud } from '../hud.js';
 import { Mood } from '../mood.js';
 import { audio } from '../audio.js';
-import { loadSave } from '../save.js';
+import { loadSave, writeSave } from '../save.js';
 import { t, itemName, dishName, stationName, keyName } from '../text.js';
 import {
   ART, DEPTH, tileCenter, artFrame, itemArt, fx, wiggle, StationView, CustomerView, ChefView, GuideArrow,
@@ -38,7 +38,6 @@ const QUIET_AFTER = {
   serve: 1500, plate: 1000, plateEarly: 1000, plateMystery: 1000, addPot: COOK_GRACE * 1000, addFryer: COOK_GRACE * 1000,
 };
 const FLASH_MS = 1800; // how long the reason stays in the label after E did nothing
-const GUIDE_DAYS = 1; // days with the guide arrow
 const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export class KitchenScene extends Phaser.Scene {
@@ -52,6 +51,7 @@ export class KitchenScene extends Phaser.Scene {
 
   create() {
     this.wallet = loadSave().coins; // total coins, shown in the HUD
+    this.dishesServed = loadSave().dishesServed; // ever, for the guide arrow
     this.coinsToday = 0;
     this.held = null;
     this.target = null;
@@ -87,7 +87,7 @@ export class KitchenScene extends Phaser.Scene {
     return this.customers.orders;
   }
 
-  // Debug helper (?debug): jump the day clock, e.g. skipTo(250) for sunset, skipTo(299) for closing.
+  // Debug helper (?debug): jump the day clock, e.g. skipTo(185) for sunset, skipTo(239) for closing.
   skipTo(seconds) {
     this.day.t = seconds;
   }
@@ -122,8 +122,8 @@ export class KitchenScene extends Phaser.Scene {
     this.tweens.add({ targets: this.highlight, alpha: 0.6, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.highlightAt = null;
     this.quietUntil = 0;
-    // Day 1: a soft bouncing arrow over the station the "Next:" hint talks about.
-    this.guide = this.dayNumber <= GUIDE_DAYS ? new GuideArrow(this) : null;
+    // New chefs: a soft bouncing arrow over the station the "Next:" hint talks about, until GUIDE_DISHES are served.
+    this.guide = this.dishesServed < GUIDE_DISHES ? new GuideArrow(this) : null;
     this.flash = null; // { station, reason, until }: the reason shown after E did nothing
   }
 
@@ -335,6 +335,13 @@ export class KitchenScene extends Phaser.Scene {
     result.customer.view.say(result.line, DECK.reactSeconds);
     this.events.emit('serve', result.customer, result.mood);
     this.dropCoins(result.customer, result.coins, window.ty);
+    this.dishesServed += 1;
+    writeSave({ dishesServed: this.dishesServed });
+    // The chef knows the way now: the arrow fades out for good.
+    if (this.guide && this.dishesServed >= GUIDE_DISHES) {
+      this.guide.fadeOut();
+      this.guide = null;
+    }
   }
 
   // A spinning coin.
@@ -393,7 +400,7 @@ export class KitchenScene extends Phaser.Scene {
     const { held, orders } = this;
     if (this.closing) return t('next.night');
     if (held?.dish) {
-      if (!orders.length) return t('next.keepDish');
+      if (!orders.length) return t(this.customers.coming ? 'next.keepDish' : 'next.keepDishLate');
       if (!orders.some((c) => c.recipe === held.dish.recipe)) return t('next.notOrdered');
       return t('next.serveDish', { dish: dishName(held.dish) });
     }
@@ -414,12 +421,12 @@ export class KitchenScene extends Phaser.Scene {
     if (this.boardWork()) return t('next.finishChop');
     // Coins wait patiently on the floor: they never hide what a waiting guest needs.
     if (this.coins.length && !orders.length) return t('next.coins');
-    if (cooking) return t('next.cooking');
+    if (cooking) return t(this.customers.coming || orders.length ? 'next.cooking' : 'next.cookingLate');
     if (blocked) return t(blocked.progress >= 1 ? 'next.readyFree' : 'next.freePot', { station: upper(blocked) });
     if (orders.length) return t(`hint.${orders[0].recipe}`);
     // Something nobody ordered waits in a cooker: only a light nudge (it can wait, or become a mystery stew).
     if (waiting) return t('next.waiting', { station: upper(waiting) });
-    return t('next.relax');
+    return t(this.customers.coming ? 'next.relax' : 'next.relaxLate');
   }
 
   // Cookers that matter for the next step: the first finished one (only food somebody ordered while guests wait),
@@ -465,10 +472,21 @@ export class KitchenScene extends Phaser.Scene {
   }
 
   // The board, when it holds raw cheese (alone or on dough) that an open order still needs chopped; else null.
+  // Chopped cheese already waiting (on a counter, in hand, or inside a raw pastel) counts towards those orders.
   boardWork() {
-    const board = [...this.stations.values()].find((s) => s.type === 'board');
-    const cheese = board.item && ingredientKey(board.item) === 'cheese';
-    return cheese && this.neededKeys().has('cheese:chopped') ? board : null;
+    const all = [...this.stations.values()];
+    const board = all.find((s) => s.type === 'board');
+    if (!board.item || ingredientKey(board.item) !== 'cheese') return null;
+    const keys = [...all.map((s) => s.item), this.held].filter((item) => item && !item.dish).map(ingredientKey);
+    const ready = keys.filter((key) => key === 'cheese:chopped' || key === 'pastel').length;
+    const needs = this.openRecipes().filter((recipe) => this.needsKey(recipe, 'cheese:chopped')).length;
+    return needs > ready ? board : null;
+  }
+
+  // Does a recipe need this ingredient key, steps included (a pastel needs chopped cheese)?
+  needsKey(recipe, key) {
+    const has = (k) => k === key || (ASSEMBLIES.find((a) => a.makes === k)?.needs.some(has) ?? false);
+    return RECIPES[recipe].needs.some(has);
   }
 
   // Ingredient keys some open order still needs, steps included (a pastel order needs dough, cheese and chopped cheese).
@@ -507,8 +525,15 @@ export class KitchenScene extends Phaser.Scene {
       return free ? { hint: 'doughBoard', station: board } : { hint: 'doughWait', station: null };
     }
     if (key === 'pastel') return { hint, station: find((s) => s.type === 'fryer' && !s.contents.length) };
-    const pot = pots.find((s) => s.contents.length && cookerStatus(s).missing.includes(key));
-    if (key === 'cheese:chopped') return { hint, station: pot ?? (board.item ? null : board) };
+    // A pot already on its way to a recipe somebody ordered and still missing this.
+    const open = this.openRecipes();
+    const pot = pots.find((s) => s.contents.length && open.includes(cookerStatus(s).recipe) && cookerStatus(s).missing.includes(key));
+    if (key === 'cheese:chopped') {
+      // Only a pastel wants it: no pot, it waits for dough (on the board when it is free).
+      const forPot = open.some((recipe) => RECIPES[recipe].needs.includes(key));
+      if (!forPot) return { hint: 'choppedPastel', station: board.item ? null : board };
+      return { hint, station: pot ?? pots.find((s) => !s.contents.length) ?? null };
+    }
     const empty = pots.find((s) => !s.contents.length);
     if (pot || empty) return { hint, station: pot ?? empty };
     // Every pot holds stray things: say so (one more thing makes a mystery stew, which cooks and frees the pot).

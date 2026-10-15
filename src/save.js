@@ -1,9 +1,10 @@
 // Tiny versioned save in localStorage. Every access is wrapped: private mode or corrupt data just means defaults.
-import { CUSTOMERS, RECIPES, DAY } from './data.js';
+import { CUSTOMERS, RECIPES, DAY, GUIDE_DISHES } from './data.js';
 
 const KEY = 'cozycooked.save.v1';
 // returning: guests left unserved yesterday, [{ id, recipe }], who come first today.
-const DEFAULTS = { version: 1, day: 1, coins: 0, muted: false, returning: [] };
+// dishesServed: every dish ever served (the guide arrow retires after GUIDE_DISHES).
+const DEFAULTS = { version: 1, day: 1, coins: 0, muted: false, returning: [], dishesServed: 0 };
 
 const wholeNumber = (n, min) => (Number.isInteger(n) && n >= min ? n : null);
 // Valid guests, each once (the first entry wins).
@@ -17,12 +18,15 @@ export function loadSave() {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY));
     if (raw?.version !== 1) return { ...DEFAULTS };
+    const day = wholeNumber(raw.day, 1) ?? DEFAULTS.day;
     return {
       version: 1,
-      day: wholeNumber(raw.day, 1) ?? DEFAULTS.day,
+      day,
       coins: wholeNumber(raw.coins, 0) ?? DEFAULTS.coins,
       muted: raw.muted === true,
       returning: guests(raw.returning),
+      // Saves from before the count: a chef already past day 1 knows the way around.
+      dishesServed: wholeNumber(raw.dishesServed, 0) ?? (day > 1 ? GUIDE_DISHES : 0),
     };
   } catch {
     return { ...DEFAULTS };

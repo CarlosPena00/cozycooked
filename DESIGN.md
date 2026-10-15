@@ -143,7 +143,7 @@ cozycooked/
 - 1 cozinha no deck do lago
 - 3 receitas (brigadeiro, pastel, baião)
 - 3-4 tipos de cliente
-- 1 dia completo (~5 min), do amanhecer até o diário da noite
+- 1 dia completo (~4 min), do amanhecer até o diário da noite
 - Moedas no chão, sem vendinha ainda
 - Dia/noite com luzes, reflexo no lago, áudio
 - EN + PT-BR, save básico
