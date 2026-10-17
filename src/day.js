@@ -7,10 +7,18 @@ export class Day {
     this.t = 0;
     this.speed = 1; // debug: QA can slow the clock down or speed it up
     this.phase = phaseAt(0);
+    this.closedEarly = false;
   }
 
+  // Closing time: the clock ran out, or the chef closed up early (close()).
   get closing() {
-    return this.t >= DAY.length;
+    return this.closedEarly || this.t >= DAY.length;
+  }
+
+  // Close up early: the phase says closing time from now on; the clock itself is not moved.
+  close() {
+    this.closedEarly = true;
+    this.phase = 'closing';
   }
 
   // 0 (dark) .. 1 (full daylight). Design renders it.
@@ -21,7 +29,7 @@ export class Day {
   // Advances the clock. Returns the new phase id when it changes this frame, else null.
   update(dt) {
     this.t += dt * this.speed;
-    const phase = phaseAt(this.t);
+    const phase = this.closedEarly ? 'closing' : phaseAt(this.t);
     if (phase === this.phase) return null;
     this.phase = phase;
     return phase;

@@ -1,6 +1,7 @@
 // The diary of the day, a notebook page: who came, what they ate, coins. Saves progress, then any key starts the next day.
-import { CUSTOMERS, STRINGS } from '../data.js';
-import { writeSave } from '../save.js';
+import { CUSTOMERS, STRINGS, UPGRADE_TIP_COINS } from '../data.js';
+import { loadSave, writeSave } from '../save.js';
+import { SPOT_KEYS } from '../map.js';
 import { t, pick, dishName } from '../text.js';
 import { HAND, ART, artFrame, artImage, dishArt, portraitArt } from '../views.js';
 
@@ -25,12 +26,17 @@ export class DiaryScene extends Phaser.Scene {
     return typeof line === 'string' ? line : line.text;
   }
 
-  // summary: { day, guests: [{ id, recipe, mood, dish }], coinsToday, coinsTotal }
+  // summary: { day, guests: [{ id, recipe, mood, dish }], coinsToday, coinsTotal, early: closed up early }
   create(summary) {
-    const { day, guests, coinsToday, coinsTotal } = summary;
+    const { day, guests, coinsToday, coinsTotal, early } = summary;
     // Guests nobody served come back first tomorrow, with the same order (the diary promises it).
     const returning = guests.filter((g) => !g.mood).map(({ id, recipe }) => ({ id, recipe }));
-    writeSave({ day: day + 1, coins: coinsTotal, returning });
+    // Once, when the chef can afford something and a cupboard is still old: a tip about the catalog.
+    const save = loadSave();
+    const tip = !save.upgradeTip && coinsTotal >= UPGRADE_TIP_COINS && SPOT_KEYS.some((key) => !save.upgrades[key]);
+    writeSave({ day: day + 1, coins: coinsTotal, returning, ...(tip ? { upgradeTip: true } : {}) });
+    // Lines under the closing line (closed early, the tip): the totals move up to make room.
+    const extra = [...(early ? [t('diary.early')] : []), ...(tip ? [t('diary.tip')] : [])];
 
     const served = guests.filter((g) => g.mood);
     this.page();
@@ -64,7 +70,7 @@ export class DiaryScene extends Phaser.Scene {
     }
 
     // Totals, written at the bottom of the page.
-    const ty = PAGE.y + 750;
+    const ty = PAGE.y + 750 - extra.length * LINE;
     // Today's plates in the space left between the lines and the totals: each guest above their dish,
     // or just a row of the dishes on a busy day.
     const used = top + (Math.min(guests.length, MAX_LINES) + (guests.length > MAX_LINES ? 1 : 0)) * LINE;
@@ -74,6 +80,9 @@ export class DiaryScene extends Phaser.Scene {
     this.add.text(left, ty, `${t('diary.coinsToday', { n: coinsToday })}     ${t('diary.coinsTotal', { n: coinsTotal })}`, { ...ink, fontSize: '40px' }).setOrigin(0, 0.62);
     this.add.text(left, ty + LINE, `${t('diary.served', { n: served.length })}     ${t('diary.rustic', { n: served.filter((g) => g.mood === 'cozycooked').length })}`, ink).setOrigin(0, 0.62);
     this.add.text(PAGE.x + PAGE.w / 2, ty + LINE * 2 + 10, this.closingLine(guests, served), { ...ink, color: '#8a5a7a' }).setOrigin(0.5, 0.62);
+    extra.forEach((line, i) => {
+      this.add.text(PAGE.x + PAGE.w / 2, ty + LINE * (3 + i) + 10, line, { ...ink, color: '#8a5a7a' }).setOrigin(0.5, 0.62);
+    });
     // The footer sits on the page, in ink, so it reads well (it pulses once input opens).
     const footer = this.add.text(PAGE.x + PAGE.w / 2, PAGE.y + PAGE.h - 52, t('diary.next', { day: day + 1 }), {
       fontFamily: HAND, fontSize: '40px', color: '#4a2f5a',

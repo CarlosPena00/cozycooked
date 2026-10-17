@@ -1,6 +1,6 @@
 // How game state looks: items, stations, the chef, customers, small effects, text styles and draw order.
 // Almost everything is a frame of one self-made sheet, 'art' (assets/art/art.png, names in assets/art/frames.js).
-import { TILE, ART_SCALE, INGREDIENTS, RECIPES, MYSTERY, ASSEMBLIES, CHOPS_NEEDED, SPRITES, KITCHEN, DECK } from './data.js';
+import { TILE, ART_SCALE, INGREDIENTS, RECIPES, MYSTERY, ASSEMBLIES, CHOPS_NEEDED, SPRITES, KITCHEN, DECK, FLICKER } from './data.js';
 import { matchRecipe, isCooker, waitingFor } from './stations.js';
 import { ART_FRAMES } from '../assets/art/frames.js';
 
@@ -168,6 +168,7 @@ const CONFETTI = {
   brigadeiro: [0x6b3e26, 0xe07a8f, 0xffd77a, 0xfff1c4],
   baiao: [0xf3d77e, 0x9a4a36, 0x7fae4f, 0xfff1c4],
   pastel: [0xf0c04a, 0xd98a3a, 0xfff1c4, 0xe07a8f],
+  paodequeijo: [0xf0c860, 0xc98a3a, 0xfff0b8, 0xd9774f],
   mystery: [0x9a7ac0, 0x7fae4f, 0xe2c99a, 0xfff1c4],
 };
 
@@ -235,13 +236,17 @@ export class StationView {
     this.scene = scene;
     this.x = x;
     this.y = y;
+    // Old cupboard tiles are baked as plain counters: the cupboard, or what was built there, is drawn on top.
+    if (station.onSpot) this.body = artImage(scene, x, y, SPRITES[station.type]).setDepth(DEPTH.map + 0.5);
     this.item = new ItemView(scene, x, y - px(1), DEPTH.stationItem);
     // A board can hold a stack: dough under raw cheese (the cheese sits a little higher, on top of it).
     if (station.type === 'board') this.under = new ItemView(scene, x, y + px(1.5), DEPTH.stationItem - 0.5);
     // Just above the tile, so the chef standing below never covers it: a dark outline around a cream backing
-    // (readable on the green wall), filled in whole art pixels.
+    // (readable on the green wall), filled in whole art pixels. Stations on the bottom wall (built on an old
+    // cupboard) show it, and their icons, just below the tile instead: the chef stands above those.
+    this.below = station.ty === KITCHEN.bottom;
     this.barWidth = px(12);
-    const barY = y - TILE / 2 - 8;
+    const barY = this.below ? y + TILE / 2 + 8 : y - TILE / 2 - 8;
     this.barBack = [[this.barWidth + 12, 24, 0x3b2420], [this.barWidth + 6, 18, COLORS.paper]]
       .map(([w, h, color]) => scene.add.rectangle(x, barY, w, h, color).setDepth(DEPTH.stationInfo).setVisible(false));
     this.bar = scene.add.rectangle(x - this.barWidth / 2, barY, 0, 12, 0xf0c04a).setOrigin(0, 0.5).setDepth(DEPTH.stationInfo);
@@ -267,6 +272,20 @@ export class StationView {
   // A small "nope" wiggle of what sits on the station (the scene wiggles the highlight around it).
   wiggle() {
     for (const obj of [this.item.image, ...(this.icons ?? [])]) wiggle(this.scene, obj, 8);
+  }
+
+  // A price tag dangling on an old cupboard, swaying gently: something can be built here.
+  showTag() {
+    this.tag = artImage(this.scene, this.x + px(3), this.y - px(3), 'price_tag', S * 0.75).setDepth(DEPTH.stationItem).setOrigin(0.5, 0);
+    this.tag.setAngle(-6);
+    this.scene.tweens.add({ targets: this.tag, angle: 6, y: this.tag.y + px(0.5), duration: 1300, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+  }
+
+  // Gone for good (an old cupboard that became something else).
+  destroy() {
+    const parts = [this.body, this.tag, this.item.image, this.under?.image, ...this.barBack, this.bar, this.overlay, this.glow,
+      this.steam, this.hearts, ...(this.icons ?? [])];
+    for (const o of parts) o?.destroy();
   }
 
   // dark: 0 by day .. 1 at night (the halo is softer in daylight).
@@ -303,8 +322,10 @@ export class StationView {
       this.overlay.setVisible(cooking);
       if (cooking) this.overlay.setFrame(ART_FRAMES[(recipe ? RECIPES[recipe].fill : null) ?? 'potfill_broth']);
     } else {
-      // Fryer oil bubbles at ~3 fps while frying.
-      this.overlay.setVisible(busy && !ready && Math.floor(time / 330) % 2 === 0).setFrame(ART_FRAMES.fryer_bubble);
+      // Fryer oil bubbles at ~3 fps while frying; the oven's embers glow behind its door and flicker as fast.
+      const flick = Math.floor(time / 330) % 2 === 0;
+      const oven = station.type === 'oven';
+      this.overlay.setVisible(busy && !ready && (oven || flick)).setAlpha(oven && !flick ? 0.65 : 1).setFrame(ART_FRAMES[FLICKER[station.type]]);
     }
     toggle(this.steam, cooking && !ready);
     toggle(this.hearts, ready);
@@ -312,28 +333,31 @@ export class StationView {
     return cooking ? station.progress : 0;
   }
 
-  // Up to 2 icons per row, above the progress bar, over the water row under the HUD cards.
-  // The finished dish shows bigger, with a springy pop.
+  // Up to 2 icons per row, above the progress bar, over the water row under the HUD cards (below the bar on the
+  // bottom wall, in one row of up to 4). The finished dish shows bigger, with a springy pop.
   layoutIcons(arts, ready) {
     const key = arts.join();
     if (key === this.iconsKey) return;
     this.iconsKey = key;
     for (const icon of this.icons) icon.destroy();
-    const top = this.y - TILE / 2 - 20;
+    const dir = this.below ? 1 : -1; // away from the tile
+    const top = this.y + dir * (TILE / 2 + 20);
     if (ready) {
-      const icon = artImage(this.scene, this.x, top - 34, arts[0], ICON_SCALE + 1).setDepth(DEPTH.stationInfo);
+      const icon = artImage(this.scene, this.x, top + dir * 34, arts[0], ICON_SCALE + 1).setDepth(DEPTH.stationInfo);
       icon.setScale(1);
       this.scene.tweens.add({ targets: icon, scale: ICON_SCALE + 1, duration: 420, ease: 'Back.easeOut', easeParams: [3] });
       this.icons = [icon];
       return;
     }
     this.icons = arts.map((art, i) => {
-      const rows = Math.ceil(arts.length / 2);
-      const row = Math.floor(i / 2);
-      const inRow = Math.min(2, arts.length - row * 2);
+      // Below the bottom wall there is only room for one row (the HUD panel is close): up to 4 side by side.
+      const per = this.below ? 4 : 2;
+      const rows = Math.ceil(arts.length / per);
+      const row = Math.floor(i / per);
+      const inRow = Math.min(per, arts.length - row * per);
       const step = 16 * ICON_SCALE;
-      const x = this.x + (inRow === 2 ? (i % 2 ? step / 2 : -step / 2) : 0);
-      const y = top - step / 2 - (rows - 1 - row) * (step - 2);
+      const x = this.x + ((i % per) - (inRow - 1) / 2) * step;
+      const y = this.below ? top + step / 2 + row * (step - 2) : top - step / 2 - (rows - 1 - row) * (step - 2);
       const icon = artImage(this.scene, x, y, art, ICON_SCALE).setDepth(DEPTH.stationInfo);
       pop(this.scene, icon, ICON_SCALE);
       return icon;

@@ -2,8 +2,8 @@
 import { audio } from '../audio.js';
 import { loadSave } from '../save.js';
 import { t } from '../text.js';
-import { TILE, ART_SCALE, MAP, CRATES, DECK, CUSTOMERS } from '../data.js';
-import { addMapImage } from '../map.js';
+import { TILE, ART_SCALE, MAP, CRATES, DECK, CUSTOMERS, UPGRADES, SPRITES } from '../data.js';
+import { addMapImage, SPOT_KEYS } from '../map.js';
 import { Mood } from '../mood.js';
 import { panel } from '../hud.js';
 import { TEXT, INK, COLORS, DEPTH, ART, artFrame, artImage, tileCenter, customerFeet, crateIcon } from '../views.js';
@@ -84,6 +84,12 @@ export class TitleScene extends Phaser.Scene {
     MAP.forEach((row, ty) => [...row].forEach((ch, tx) => {
       if (CRATES[ch]) crateIcon(this, tx, ty, CRATES[ch]);
     }));
+    // The old cupboards, or what the chef built there (the baked map only has counters on those tiles).
+    const { upgrades } = loadSave();
+    for (const key of SPOT_KEYS) {
+      const [tx, ty] = key.split(',').map(Number);
+      artImage(this, tileCenter(tx), tileCenter(ty), upgrades[key] ? UPGRADES[upgrades[key]].art : SPRITES.spot).setDepth(DEPTH.map + 0.5);
+    }
     const animal = (id, { tx, ty }, anim) => this.add.sprite(tileCenter(tx), customerFeet(ty), ART, artFrame(`${id}_front_0`))
       .setOrigin(0.5, 1).setScale(S).setDepth(DEPTH.customer).play(anim);
     animal('capybara', SPOT_A, 'capybara_front');

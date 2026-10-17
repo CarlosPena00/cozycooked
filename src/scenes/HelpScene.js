@@ -1,4 +1,5 @@
-// Pause/help overlay on top of the paused kitchen: controls and the three recipes as picture cards.
+// Pause/help overlay on top of the paused kitchen: controls and the recipes as picture cards (pão de queijo only
+// once the clay oven is built). N closes the kitchen early for the day, after a confirm card.
 import { RECIPES, INGREDIENTS, ASSEMBLIES, SPRITES } from '../data.js';
 import { t } from '../text.js';
 import { writeSave } from '../save.js';
@@ -47,7 +48,12 @@ export class HelpScene extends Phaser.Scene {
     ink(cx, 120, t('help.title'), { fontSize: '60px', fontStyle: '600' }).setOrigin(0.5);
 
     ink(240, 190, t('help.recipes'), { fontSize: '34px', fontStyle: '600', color: COLORS.inkSoft });
-    Object.entries(RECIPES).forEach(([id, recipe], i) => this.recipeCard(id, recipe, 240, 240 + i * 150));
+    const kitchen = this.scene.get('kitchen');
+    const recipes = kitchen.recipes();
+    // Three cards fill the space above the rules; a fourth (the oven's) makes them all a little slimmer.
+    const h = recipes.length > 3 ? 104 : 130;
+    const gap = recipes.length > 3 ? 12 : 20;
+    recipes.forEach((id, i) => this.recipeCard(id, RECIPES[id], 240, 240 + i * (h + gap), h));
 
     // Cozycooked is a feature: sleepy dishes.
     const ry = 712;
@@ -69,33 +75,86 @@ export class HelpScene extends Phaser.Scene {
       const text = ink(x + w + 14, 888, label, { fontSize: '26px' }).setOrigin(0, 0.5);
       x += w + text.width + 60;
     }
-    ink(cx, 970, `${t('help.back')}      ·      ${t('help.quit')}`, { fontSize: '26px', color: COLORS.inkSoft }).setOrigin(0.5);
+    // The footer: back, close up for today (not once closing time has started), back to the title.
+    const canClose = !kitchen.closing;
+    const parts = [t('help.back'), ...(canClose ? [t('help.close')] : []), t('help.quit')];
+    const footerStyle = { fontSize: '26px', color: COLORS.inkSoft, align: 'center', lineSpacing: 8 };
+    this.footer = ink(cx, 975, parts.join('      ·      '), footerStyle).setOrigin(0.5);
+    if (this.footer.width > 1760) this.footer.setText(`${parts.slice(0, -1).join('      ·      ')}\n${parts.at(-1)}`);
+    this.confirmCard = this.closeCard(cx);
 
-    for (const key of ['ESC', 'P', 'H']) this.input.keyboard.on(`keydown-${key}`, () => this.close());
-    this.input.keyboard.once('keydown-Q', () => this.toTitle());
+    this.done = false;
+    for (const key of ['ESC', 'P', 'H']) {
+      this.input.keyboard.on(`keydown-${key}`, () => (this.confirmCard.visible ? this.ask(false) : this.close()));
+    }
+    this.input.keyboard.on('keydown-N', (e) => {
+      if (e.repeat || !canClose) return;
+      if (this.confirmCard.visible) this.closeEarly();
+      else this.ask(true);
+    });
+    this.input.keyboard.on('keydown-Q', () => {
+      if (!this.confirmCard.visible) this.toTitle();
+    });
+  }
+
+  // "Close the kitchen for today?" - a paper card in the middle of the page, over a soft dim.
+  closeCard(cx) {
+    const w = 1240;
+    const h = 300;
+    const y = 540 - h / 2;
+    const card = this.add.container(0, 0).setVisible(false).setDepth(10);
+    card.add(this.add.rectangle(0, 0, 1920, 1080, 0x1b1210, 0.35).setOrigin(0));
+    const g = this.add.graphics().fillStyle(COLORS.paper).fillRoundedRect(cx - w / 2, y, w, h, 18);
+    card.add([g, panel(this, cx - w / 2, y, w, h)]);
+    const ink = (ty, text, style) => this.add.text(cx, ty, text, { ...INK, align: 'center', ...style }).setOrigin(0.5);
+    card.add(ink(y + 70, t('help.closeAsk'), { fontSize: '48px', fontStyle: '600' }));
+    card.add(ink(y + 150, t('help.closeWhy'), { fontSize: '28px', color: COLORS.inkSoft, wordWrap: { width: w - 120 } }));
+    card.add(ink(y + 236, t('help.closeYes'), { fontSize: '30px', fontStyle: '600' }));
+    return card;
+  }
+
+  // Show (or put away) the close-up card; the footer steps aside while it is up.
+  ask(on) {
+    this.confirmCard.setVisible(on);
+    this.footer.setVisible(!on);
+  }
+
+  // Close up for today: back to the kitchen, which says good night and opens the diary.
+  closeEarly() {
+    if (this.done) return;
+    this.done = true;
+    const kitchen = this.scene.get('kitchen');
+    this.close();
+    kitchen.closeEarly();
   }
 
   // Back to the title: the day starts over next time, the coins picked up so far are kept
   // (coins still on the floor or in the air count too, like at closing time).
   toTitle() {
+    if (this.done) return;
+    this.done = true;
     const kitchen = this.scene.get('kitchen');
     writeSave({ coins: kitchen.wallet + kitchen.coins.length });
     this.scene.stop('kitchen');
     this.scene.start('title');
   }
 
-  recipeCard(id, recipe, x, y) {
+  recipeCard(id, recipe, x, y, h = 130) {
+    const slim = h < 130;
     const g = this.add.graphics();
-    g.fillStyle(0xf6e6c4).fillRoundedRect(x, y, 1440, 130, 16);
-    this.add.text(x + 24, y + 16, recipe.name, { ...INK, fontSize: '32px', fontStyle: '600' });
-    this.add.text(x + 24, y + 62, t(`help.${id}`), { ...INK, fontSize: '24px', color: COLORS.inkSoft, wordWrap: { width: 380 } });
+    g.fillStyle(0xf6e6c4).fillRoundedRect(x, y, 1440, h, 16);
+    this.add.text(x + 24, y + (slim ? 10 : 16), recipe.name, { ...INK, fontSize: slim ? '30px' : '32px', fontStyle: '600' });
+    this.add.text(x + 24, y + (slim ? 50 : 62), t(`help.${id}`), {
+      ...INK, fontSize: slim ? '22px' : '24px', color: COLORS.inkSoft, wordWrap: { width: 380 },
+    });
+    const my = y + h / 2;
     let ix = x + 470;
     for (const step of steps(id)) {
       if (step === '+' || step === '>') {
-        this.add.text(ix + 4, y + 65, step === '+' ? '+' : '→', { ...INK, fontSize: '34px', color: COLORS.inkSoft }).setOrigin(0.5);
+        this.add.text(ix + 4, my, step === '+' ? '+' : '→', { ...INK, fontSize: '34px', color: COLORS.inkSoft }).setOrigin(0.5);
         ix += 40;
       } else {
-        artImage(this, ix + 32, y + 65, step, 4);
+        artImage(this, ix + 32, my, step, 4);
         ix += 76;
       }
     }

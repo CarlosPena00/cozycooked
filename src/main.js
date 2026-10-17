@@ -2,6 +2,7 @@ import { BootScene } from './scenes/BootScene.js';
 import { TitleScene } from './scenes/TitleScene.js';
 import { KitchenScene } from './scenes/KitchenScene.js';
 import { HelpScene } from './scenes/HelpScene.js';
+import { CatalogScene } from './scenes/CatalogScene.js';
 import { DiaryScene } from './scenes/DiaryScene.js';
 import { audio } from './audio.js';
 
@@ -19,7 +20,7 @@ const game = new Phaser.Game({
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
-  scene: [BootScene, TitleScene, KitchenScene, HelpScene, DiaryScene],
+  scene: [BootScene, TitleScene, KitchenScene, HelpScene, CatalogScene, DiaryScene],
 });
 
 // M toggles sound on every screen.

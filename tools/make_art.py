@@ -2421,6 +2421,121 @@ def coin_hud():
     return sprite(rows, pal)
 
 
+# ---------------------------------------------------------------- round 9: old cupboards and their upgrades
+
+# A tired counter nobody uses: dusty cabinet, a faded doily, a sleepy jam jar and a cobweb in the corner.
+OLD_CABINET_PAL = {"D": "#6a4a3a", "f": "#9a7a62", "F": "#8a6a52", "y": "#b8a070", "v": "#5e4434"}
+DOILY = [
+    ".w.w.w.w.",
+    "wWwWwWwWw",
+    "WwwwwwwwW",
+    "wWwWwWwWw",
+    ".w.w.w.w.",
+]
+DOILY_PAL = {"w": "#efe6d6", "W": "#d6c8b2"}
+JAR = [
+    "..lll..",
+    ".LLLLL.",
+    "gjjjjjg",
+    "gkkjkkg",
+    "gjjjjjg",
+    "gjjkjjg",
+    ".ggggg.",
+]
+JAR_PAL = {"l": "#c9a24a", "L": "#a07a34", "g": "#cfe3e0", "j": "#e8a04a", "k": "#7a4a2e"}
+COBWEB = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (0, 1), (0, 2), (0, 3), (0, 4),
+          (1, 1), (2, 2), (3, 3), (3, 1), (4, 1), (1, 3), (1, 4)]
+
+
+def cupboard_old():
+    f = paint(WORKTOP + CABINET, OLD_CABINET_PAL)
+    f = on(f, grid(DOILY, DOILY_PAL), 2, 4)
+    f = on(f, outlined(grid(JAR, JAR_PAL)), 7, 0)
+    for x, y in COBWEB:
+        f.putpixel((x, y), rgb("#ece6da") + (220,))
+    return f
+
+
+# A terracotta dome oven on the counter: an arched iron door, firewood stacked in the cabinet below.
+OVEN_DOME = [
+    "....TTTTTT....",
+    "..TTzzttttTT..",
+    ".TzzttttttttT.",
+    "TztttnnnnttttT",
+    "TzttniiiintttT",
+    "TtttniiiintttT",
+    "TtttniiiinttTT",
+    "TTttniiiintTTT",
+    "SSSSnnnnnnSSSS",
+]
+OVEN_PAL = {"T": "#b85e3c", "t": "#d9774f", "z": "#ec9a6c", "n": "#3d3634", "i": "#2a1c18", "S": "#9a4a30"}
+LOGS = [
+    "LLLLLLLLLLLLLLLL",
+    "DDDDDDDDDDDDDDDD",
+    "vkkkkkkkkkkkkkkF",
+    "vkoOooOooOooOokF",
+    "vkOoOOoOOoOOoOkF",
+    "dddddddddddddddd",
+]
+LOGS_PAL = {"k": "#3a2418", "o": "#d9a066", "O": "#8a5634"}
+OVEN_AT = (1, 0)  # where the outlined dome sits on the tile
+
+
+def oven_tile():
+    f = paint(WORKTOP + LOGS, LOGS_PAL)
+    return on(f, outlined(grid(OVEN_DOME, OVEN_PAL)), *OVEN_AT)
+
+
+def oven_glow():
+    """Overlay: embers glowing through the door (the 'i' pixels of OVEN_DOME), brighter at the bottom."""
+    f = canvas(16, 16)
+    for y, r in enumerate(OVEN_DOME):
+        for x, ch in enumerate(r):
+            if ch == "i":
+                col = "#ffd060" if y >= 6 and x in (6, 7) else "#f2823a" if y >= 5 else "#c9502a"
+                f.putpixel((x + 1 + OVEN_AT[0], y + 1 + OVEN_AT[1]), rgb(col) + (255,))
+    return f
+
+
+PAO = [".yyyy.", "yhhyyy", "yhyyyY", "yyyyYY", ".YYYY."]
+PAO_PAL = {"y": "#f0c860", "Y": "#c98a3a", "h": "#fff0b8"}
+PAO_PALE = {"y": "#f8eedd", "Y": "#e2c9a8", "h": "#ffffff"}
+
+
+def pao_de_queijo(pal, sleepy=False):
+    """A little pile of cheese puffs on a plate: one behind, two in front (sleepy faces when cozycooked)."""
+    puffs = canvas(12, 8)
+    for x, y in ((3, 0), (0, 3), (6, 3)):
+        puffs.alpha_composite(grid(PAO, pal), (x, y))
+    if sleepy:
+        for x in (0, 6):
+            for dx, dy, col in ((1, 2, "#8a5a4a"), (4, 2, "#8a5a4a"), (1, 3, "#f4a3b0"), (4, 3, "#f4a3b0")):
+                puffs.putpixel((x + dx, 3 + dy), rgb(col) + (255,))
+    plate = sprite(PLATE, align="bottom", dy=-1)
+    return stack(plate, frame(outlined(puffs), align="bottom", dy=-4))
+
+
+TAG = [
+    "...qqq...",
+    "..qqkqq..",
+    ".qqqqqqq.",
+    "qqqyyyqqq",
+    "qqyYhYyqq",
+    "qqqyyyqqq",
+    "qqqqqqqqq",
+]
+TAG_PAL = {"q": "#fff1d0", "k": "#6b4a32", "y": "#f7c948", "Y": "#d89a2a", "h": "#fff6cc"}
+
+
+def price_tag():
+    """A cream price tag with a coin, hanging from a string."""
+    f = canvas(16, 16)
+    for y in range(0, 5):
+        f.putpixel((8, y), rgb("#6b4a32") + (255,))
+    f.alpha_composite(outlined(grid(TAG, TAG_PAL)), (3, 4))
+    return f
+
+
 # ---------------------------------------------------------------- build
 
 
@@ -2596,6 +2711,14 @@ def build(preview_dir=None):
     add("petals_1", petals(1))
     # diary: a caramel heart for "charmingly rustic" (the pale steam heart vanishes on the cream page)
     add("heart_rustic", sprite(HEART, RUSTIC_HEART_PAL))
+
+    # ---- round 9: old cupboards, the clay oven and pao de queijo (appended)
+    add("cupboard_old", cupboard_old())
+    add("oven", oven_tile())
+    add("oven_glow", oven_glow())
+    add("dish_paodequeijo", pao_de_queijo(PAO_PAL))
+    add("dish_paodequeijo_under", pao_de_queijo(PAO_PALE, sleepy=True))
+    add("price_tag", price_tag())
 
     names = list(frames)
     cols = 16

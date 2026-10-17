@@ -7,7 +7,7 @@ export const CHOPS_NEEDED = 3;
 export const COIN_PICK_RADIUS = TILE * 0.6;
 
 // Legend: ~ water, _ deck, . floor, # wall,
-// C counter, B cutting board, P pot, F fryer, S serve window, X bin,
+// C counter, B cutting board, P pot, F fryer, S serve window, X bin, U old cupboard (a spot for an upgrade, see UPGRADES),
 // lowercase letters are ingredient crates (see CRATES).
 // 20x12 tiles = 1920x1152 px: the camera shows y 0-1080, so only the bottom 72 px of row 11 (water) are cropped.
 export const MAP = [
@@ -19,7 +19,7 @@ export const MAP = [
   '~~~~~c......S_______', // 5  chocolate | serve 1 | spot + pier to the right bank
   '~~~~~r......S_______', // 6  rice      | serve 2 | spot + pier
   '~~~~~b......S_______', // 7  beans     | serve 3 | spot + pier
-  '~~~~~##CC#CX#____~~~', // 8  counter, counter | counter, bin ; deck bottom edge
+  '~~~~~#UCCUUX#____~~~', // 8  cupboard, counter, counter | cupboard, cupboard, bin ; deck bottom edge
   '~~~~~~~~~~~~~~~~~~~~', // 9
   '~~~~~~~~~~~~~~~~~~~~', // 10 under the bottom panel
   '~~~~~~~~~~~~~~~~~~~~', // 11 only 24 px visible
@@ -32,8 +32,8 @@ export const KITCHEN = { left: 5, top: 3, right: 12, bottom: 8 };
 
 // Art frame (assets/art/art.png) drawn on each station type; crates use crate_<ingredient>.
 export const SPRITES = {
-  counter: 'counter', board: 'counter_board', pot: 'pot_stove', fryer: 'fryer',
-  serve: 'serve', bin: 'bin',
+  counter: 'counter', board: 'counter_board', pot: 'pot_stove', fryer: 'fryer', oven: 'oven',
+  serve: 'serve', bin: 'bin', spot: 'cupboard_old',
 };
 
 // Scenery baked into the map (no collision), top-left on a tile plus an optional offset in art pixels (dx, dy):
@@ -63,15 +63,29 @@ export const EVENT_SOUNDS = {
   interact: ['click', 0.35], nope: ['click', 0.22, 0.55], chop: ['chop', 0.45], cookerDone: ['pickup', 0.5], fryerDone: ['pickup', 0.5],
   plate: ['plate', 0.5], serve: ['serve', 0.45], coinLand: ['coin', 0.3], coinPick: ['pickup', 0.35],
   cookerAdd: ['plop', 0.3], stack: ['plop', 0.3, 0.85], assemble: ['assemble', 0.35], bin: ['bin', 0.35], coinDrop: ['toss', 0.12],
+  build: ['assemble', 0.5],
 };
 // Soft loops while something cooks: cooker type -> [sound, volume]. The loop files are quiet (mean about -29 dBFS),
 // so near full volume they sit about 8 dB under the music (music mean -11 dBFS at MUSIC_VOLUME 0.3): audible, not loud.
 export const COOK_LOOPS = { pot: ['boil', 0.95], fryer: ['sizzle', 1] };
+// Cookers whose overlay flickers while cooking (fryer oil bubbles, embers behind the oven door): type -> art frame.
+export const FLICKER = { fryer: 'fryer_bubble', oven: 'oven_glow' };
 export const MUSIC_VOLUME = 0.3;
 
 export const STATIONS = {
   C: { type: 'counter' }, B: { type: 'board' }, P: { type: 'pot' }, F: { type: 'fryer' }, S: { type: 'serve' }, X: { type: 'bin' },
+  U: { type: 'spot' },
 };
+
+// Furniture the old cupboards (U tiles) can become, bought with coins in the catalog. Each one once; there are three
+// cupboards, one for each upgrade. `type` is the station built there, `art` its picture in the catalog.
+export const UPGRADES = {
+  board: { type: 'board', price: 15, art: 'counter_board', name: 'Second cutting board', text: 'Chop two cheeses at once.' },
+  pot: { type: 'pot', price: 25, art: 'pot_stove', name: 'Third pot', text: 'Three dishes bubbling at once.' },
+  oven: { type: 'oven', price: 35, art: 'oven', name: 'Clay oven', text: 'Bakes pão de queijo - a new dish!' },
+};
+// The diary suggests the cupboards once the chef has this many coins (and a cupboard is still unbuilt).
+export const UPGRADE_TIP_COINS = 15;
 
 // "q" is for queijo, to keep "c" for chocolate.
 export const CRATES = { m: 'milk', c: 'chocolate', r: 'rice', b: 'beans', q: 'cheese', d: 'dough' };
@@ -93,6 +107,8 @@ export const INGREDIENTS = {
 export const COOKERS = {
   pot: { capacity: 4, seconds: 6, accepts: 'any', add: 'addPot', full: 'potFull', refuse: null, empty: 'emptyPot', doneEvent: 'cookerDone' },
   fryer: { capacity: 1, seconds: 4, accepts: ['pastel'], add: 'addFryer', full: 'fryerBusy', refuse: 'fryerOnly', empty: 'emptyFryer', doneEvent: 'fryerDone' },
+  // The clay oven keeps its own polvilho: chopped cheese is all it needs.
+  oven: { capacity: 1, seconds: 6, accepts: ['cheese:chopped'], add: 'addOven', full: 'ovenBusy', refuse: 'ovenOnly', empty: 'emptyOven', doneEvent: 'cookerDone' },
 };
 // Seconds after the last ingredient goes in before the food can be taken out (no accidental double-E plating).
 export const COOK_GRACE = 0.4;
@@ -102,7 +118,11 @@ export const RECIPES = {
   brigadeiro: { name: 'Brigadeiro', cooker: 'pot', needs: ['milk', 'chocolate'], art: 'dish_brigadeiro', fill: 'potfill_brigadeiro' },
   baiao: { name: 'Baião de dois', cooker: 'pot', needs: ['rice', 'beans', 'cheese:chopped'], art: 'dish_baiao', fill: 'potfill_baiao' },
   pastel: { name: 'Pastel', cooker: 'fryer', needs: ['pastel'], art: 'dish_pastel' },
+  paodequeijo: { name: 'Pão de queijo', cooker: 'oven', needs: ['cheese:chopped'], art: 'dish_paodequeijo' },
 };
+
+// Recipes guests can order in a kitchen with these cooker types (no oven, no pão de queijo).
+export const availableRecipes = (cookerTypes) => Object.keys(RECIPES).filter((id) => cookerTypes.has(RECIPES[id].cooker));
 
 // Two ingredients combined on a board or counter (order-independent). The result stays on the station.
 export const ASSEMBLIES = [
@@ -138,7 +158,7 @@ export const DECK = {
 // the others hang on kitchen walls (corners + bottom wall). mood.js draws them; the night mask brightens around them.
 export const LANTERNS = {
   posts: [{ tx: 13, ty: 4 }, { tx: 16, ty: 4 }],
-  walls: [{ tx: 5, ty: 3 }, { tx: 12, ty: 3 }, { tx: 9, ty: 8 }],
+  walls: [{ tx: 5, ty: 3 }, { tx: 12, ty: 3 }, { tx: 5, ty: 8 }, { tx: 12, ty: 8 }],
 };
 
 // Day timings are written on a 300 s clock and scaled by DAY_SCALE, the one knob for the length of a day (0.8: 240 s).
@@ -153,6 +173,7 @@ export const CUSTOMERS = {
   capybara: {
     name: 'Capybara', favorite: 'brigadeiro', speed: 1.5, minTime: 0,
     happy: ['Perfect. Like a warm bath.', "Mmm. I'll tell the birds.", 'Five stars. Well, five seeds.'],
+    happyWith: { paodequeijo: 'Cheesy cloud bread. Life is good.' }, // a happy line for one dish
     cozycooked: ['Rustic. I love it.', 'A bit runny. Very relaxing.', 'Raw is a lifestyle.'],
     surprised: ['Not what I ordered. Still nice.', 'A surprise! How chill.', "I'll pretend I asked for this."],
     idle: "No rush. I'm watching the clouds.",
@@ -248,7 +269,7 @@ export const STRINGS = {
   },
   station: {
     counter: 'Counter', board: 'Cutting board', pot: 'Pot', fryer: 'Fryer',
-    serve: 'Serve window', bin: 'Bin', crate: '{ingredient} crate',
+    serve: 'Serve window', bin: 'Bin', crate: '{ingredient} crate', oven: 'Oven', spot: 'Old cupboard',
   },
   item: {
     chopped: 'Chopped {ingredient}',
@@ -260,7 +281,7 @@ export const STRINGS = {
     pickUp: 'pick it up', putDown: 'put it down', swap: 'swap', makePastel: 'make a pastel',
     cheeseOnDough: 'put it on the dough', doughUnder: 'slide it under the cheese',
     chop: 'chop ({n}/{max})', putOnBoard: 'put it on the board',
-    addPot: 'add to the pot', addFryer: 'put in the fryer',
+    addPot: 'add to the pot', addFryer: 'put in the fryer', addOven: 'put it in the oven', browse: 'browse the catalog',
     plate: 'plate it - just right!', plateEarly: 'plate it rustic (a bit cozycooked)',
     plateMystery: 'plate the mystery stew',
     throwAway: 'throw away {item}', serve: 'serve it!',
@@ -272,6 +293,8 @@ export const STRINGS = {
     potFull: 'the pot is full - plate it first',
     fryerBusy: 'the fryer is busy - one pastel at a time',
     fryerOnly: 'the fryer only takes a raw pastel',
+    ovenBusy: 'the oven is busy - one batch at a time',
+    ovenOnly: 'the oven only takes chopped cheese',
     handsFull: 'hands full - set it on a counter first',
     dishInHand: 'one dish at a time - serve this one first',
     missing: 'add the rest - or toss in anything for a mystery stew',
@@ -283,6 +306,7 @@ export const STRINGS = {
     takeDish: 'take the dish to a window or counter',
     emptyPot: 'add ingredients here',
     emptyFryer: 'fry a raw pastel here',
+    emptyOven: 'bake chopped cheese here',
     emptyBoard: 'put cheese here to chop it',
     emptyCounter: 'set anything down here',
     emptyBin: 'bring something to throw away',
@@ -299,14 +323,16 @@ export const STRINGS = {
     cheeseWait: 'Chop the cheese on the CUTTING BOARD first - set this one on a counter meanwhile.',
     dough: 'Put it on chopped cheese to make a pastel.',
     choppedCheese: 'Add it to a POT for baião, or put dough on it for a pastel.',
+    choppedOven: 'Put it in the OVEN for pão de queijo.',
+    ovenWait: 'The OVEN is busy - set it on a counter until it is free.',
     choppedPastel: 'Set it down, then put dough on it for a pastel.',
     rawPastel: 'Pop it in the FRYER.',
     toPot: 'Put it in a POT with the rest of its recipe.',
     doughBoard: 'Chop some cheese first - the dough can wait under it on the CUTTING BOARD.',
     doughWait: 'Chop some cheese first - set the dough on a counter meanwhile.',
     notNeeded: 'Nobody ordered that - set it on a counter, or toss it in the BIN.',
-    freePot: 'Both POTS are taken - toss anything in one for a mystery stew to free it.',
-    freePotHeld: 'Both POTS are taken - toss it in one for a mystery stew to free it.',
+    freePot: 'Every POT is taken - toss anything in one for a mystery stew to free it.',
+    freePotHeld: 'Every POT is taken - toss it in one for a mystery stew to free it.',
     onCounter: 'The {dish} on the COUNTER is ready - take it to a SERVE WINDOW.',
     finishChop: 'Finish chopping the cheese on the CUTTING BOARD (press E).',
     ready: 'The {station} is ready! Press E on it to plate it.',
@@ -324,6 +350,7 @@ export const STRINGS = {
     brigadeiro: 'Brigadeiro: milk + chocolate (left crates) in a POT.',
     baiao: 'Baião: rice + beans + chopped cheese in a POT.',
     pastel: 'Pastel: chop cheese, put dough on it, then FRY it.',
+    paodequeijo: 'Chop cheese, put it in the OVEN, then plate it with E.',
   },
   help: {
     title: 'Paused - the food will wait',
@@ -336,10 +363,25 @@ export const STRINGS = {
     brigadeiro: 'Milk + chocolate in a POT, then plate it with E.',
     baiao: 'Rice + beans + chopped cheese in a POT, then plate it with E.',
     pastel: 'Chop cheese, put dough on it, FRY it, then plate it with E.',
+    paodequeijo: 'Chop cheese, put it in the OVEN, then plate it with E.',
     rules: 'Nothing burns and nobody is in a hurry. Take food out early if you like: customers find rustic, '
       + 'cozycooked dishes charming.',
     back: 'Esc / P / H: back to the kitchen',
     quit: 'Q: back to the title - coins are kept, the day starts over',
+    close: 'N: close up for today',
+    closeAsk: 'Close the kitchen for today?',
+    closeWhy: 'Guests still waiting will come back tomorrow. Coins on the floor come with you.',
+    closeYes: 'N: yes, good night  ·  Esc: keep cooking',
+  },
+  catalog: {
+    title: 'Kitchen catalog',
+    subtitle: 'Turn this old cupboard into more kitchen.',
+    price: '{n} coins',
+    short: '{n} more coins',
+    have: 'You have {n} coins',
+    keys: 'A / D: choose  ·  E: buy  ·  Esc: close',
+    confirm: 'Build it here for {price} coins?  E: yes  ·  Esc: no',
+    built: 'Built!',
   },
   diary: {
     title: 'Diary - Day {day}',
@@ -354,6 +396,8 @@ export const STRINGS = {
     served: 'Dishes served: {n}',
     rustic: 'Rustic dishes: {n}',
     next: 'Press any key to open day {day}',
+    early: 'Closed up early. The lake did not mind.',
+    tip: 'Tip: the old cupboards can become more kitchen. Press E on one.',
     // A line can name a guest (only used on days that guest came) or need everyone served.
     closing: [
       'The lake is quiet. The pots are clean. Good day.',

@@ -170,6 +170,12 @@ function cooker(station, held) {
   });
 }
 
+// An old cupboard opens the furniture catalog (the scene does that), whatever the chef holds.
+function spot(station, held, ctx) {
+  if (ctx.closing) return refuse('closed');
+  return act('browse', () => held);
+}
+
 // The serve window only decides whether serving is possible; the scene picks the customer.
 function serve(station, held, ctx) {
   if (ctx.closing) return refuse('closed');
@@ -180,7 +186,7 @@ function serve(station, held, ctx) {
 
 // -> { action, reason, n, run }. action/reason are STRINGS keys (action.*, reason.*); n fills {n} in the text.
 // run() mutates the station and returns what the chef holds afterwards. action null = E does nothing.
-// ctx: { waiting: number of customers waiting, closing: bool } (only used by the serve window).
+// ctx: { waiting: number of customers waiting, closing: bool } (only used by the serve window and old cupboards).
 export function resolve(station, held, ctx = { waiting: 0, closing: false }) {
   if (isCooker(station)) return cooker(station, held);
   switch (station.type) {
@@ -189,6 +195,7 @@ export function resolve(station, held, ctx = { waiting: 0, closing: false }) {
     case 'counter':
     case 'board': return holder(station, held);
     case 'serve': return serve(station, held, ctx);
+    case 'spot': return spot(station, held, ctx);
     default: return NOTHING;
   }
 }

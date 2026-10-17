@@ -23,7 +23,9 @@ export function moodFor(customer, dish) {
 
 export class Customers {
   // returning: guests left unserved yesterday ([{ id, recipe }]); they come first, before anyone new.
-  constructor(dayNumber, emit = () => {}, returning = []) {
+  // recipes: what the kitchen can make (no oven, no pão de queijo); the scene updates it when something is built.
+  constructor(dayNumber, emit = () => {}, returning = [], recipes = Object.keys(RECIPES)) {
+    this.recipes = recipes;
     this.dayNumber = dayNumber;
     this.emit = emit;
     this.list = []; // on the deck now, arrival order
@@ -99,15 +101,25 @@ export class Customers {
     const onDeck = (id) => this.list.some((c) => c.id === id);
     const ready = (id) => !onDeck(id) && t >= CUSTOMERS[id].minTime;
     const i = this.pending.findIndex((g) => ready(g.id));
-    if (i >= 0) return this.pending.splice(i, 1)[0];
+    if (i >= 0) {
+      const guest = this.pending.splice(i, 1)[0];
+      // A returning guest keeps yesterday's order while the kitchen can still make it.
+      return this.recipes.includes(guest.recipe) ? guest : { ...guest, recipe: this.pickRecipe(guest.id) };
+    }
     const ids = Object.keys(CUSTOMERS).filter((id) => ready(id) && !this.pending.some((g) => g.id === id));
     if (!ids.length) return null;
     const recent = this.log.slice(-2).map((c) => c.id);
     const fresh = ids.filter((id) => !recent.includes(id));
     const older = ids.filter((id) => id !== recent.at(-1));
     const id = pick(fresh.length ? fresh : older.length ? older : ids);
-    const recipe = Math.random() < DAY.arrivals.favoriteChance ? CUSTOMERS[id].favorite : pick(Object.keys(RECIPES));
-    return { id, recipe };
+    return { id, recipe: this.pickRecipe(id) };
+  }
+
+  // Often their favorite, else anything this kitchen can make.
+  pickRecipe(id) {
+    const { favorite } = CUSTOMERS[id];
+    const favored = Math.random() < DAY.arrivals.favoriteChance && this.recipes.includes(favorite);
+    return favored ? favorite : pick(this.recipes);
   }
 
   arrive(t) {
@@ -183,7 +195,7 @@ export class Customers {
     if (!c) return null;
     const mood = moodFor(c, dish);
     const favorite = mood === 'happy' && dish.recipe === CUSTOMERS[c.id].favorite;
-    const line = pick(CUSTOMERS[c.id][mood]);
+    const line = (mood === 'happy' && CUSTOMERS[c.id].happyWith?.[dish.recipe]) || pick(CUSTOMERS[c.id][mood]);
     Object.assign(c, { state: 'served', timer: DECK.reactSeconds, mood, dish: { ...dish }, line });
     this.emit('served', c, { mood, line });
     return { customer: c, mood, coins: COINS[mood] + (favorite ? COINS.favoriteBonus : 0), line };

@@ -4,15 +4,15 @@
 //   interact (station, action)   chop (station)   cookerAdd (station)   cookerDone (station)   fryerDone (station)
 //   plate (station)   assemble (station)   stack (station)   bin (station)   serve (customer, mood)   coinDrop (coin)
 //   coinLand (coin)   coinPick (coin)   phase (phaseId)   lanternsOn ()   customer (event, customer, extra)
-//   nope (station): E did nothing
+//   nope (station): E did nothing   build (station): an old cupboard became something new
 import {
   TILE, ART_SCALE, SPEED, CHOPS_NEEDED, COIN_PICK_RADIUS, PLAYER_START, INGREDIENTS, COOKERS, COOK_LOOPS, COOK_GRACE,
-  CRATES, DAY, DECK, KITCHEN, MAP, NEXT_FOR_INGREDIENT, RECIPES, ASSEMBLIES, GUIDE_DISHES,
+  CRATES, DAY, DECK, KITCHEN, MAP, NEXT_FOR_INGREDIENT, RECIPES, ASSEMBLIES, GUIDE_DISHES, UPGRADES, availableRecipes,
 } from '../data.js';
 import { resolve, cook, isCooker, ingredientKey, cookerStatus, waitingFor } from '../stations.js';
 import { Day } from '../day.js';
 import { Customers } from '../customers.js';
-import { buildKitchen } from '../map.js';
+import { buildKitchen, spotStation } from '../map.js';
 import { Hud } from '../hud.js';
 import { Mood } from '../mood.js';
 import { audio } from '../audio.js';
@@ -24,7 +24,7 @@ import {
 
 // Which extra event each action emits (besides `interact`).
 const ACTION_EVENTS = {
-  chop: 'chop', addPot: 'cookerAdd', addFryer: 'cookerAdd', plate: 'plate', plateEarly: 'plate', plateMystery: 'plate',
+  chop: 'chop', addPot: 'cookerAdd', addFryer: 'cookerAdd', addOven: 'cookerAdd', plate: 'plate', plateEarly: 'plate', plateMystery: 'plate',
   makePastel: 'assemble', throwAway: 'bin', cheeseOnDough: 'stack', doughUnder: 'stack',
 };
 
@@ -36,7 +36,9 @@ const BODY = TILE * 0.6; // the chef's collision box: smaller than a tile so cor
 // and while fresh food settles in a cooker (COOK_GRACE), so the label does not flicker through "it just went in".
 const QUIET_AFTER = {
   serve: 1500, plate: 1000, plateEarly: 1000, plateMystery: 1000, addPot: COOK_GRACE * 1000, addFryer: COOK_GRACE * 1000,
+  addOven: COOK_GRACE * 1000,
 };
+const CHOP_REPEAT_MS = 220; // holding E on a board with raw cheese keeps chopping, one chop per this many ms
 const FLASH_MS = 1800; // how long the reason stays in the label after E did nothing
 const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -57,19 +59,24 @@ export class KitchenScene extends Phaser.Scene {
     this.target = null;
     this.coins = [];
     this.closing = false;
+    this.closedEarly = false;
     this.ending = false;
+    this.chopAgainAt = 0;
     this.closeTimer = 0;
     this.lanternsLit = false;
 
-    const { ground, walls, stations } = buildKitchen(this);
+    this.upgrades = loadSave().upgrades; // { "tx,ty": upgrade id } built on the old cupboards
+    const { ground, walls, stations } = buildKitchen(this, this.upgrades);
     this.ground = ground;
     this.walls = walls;
     this.stations = stations;
     this.stationViews = new Map();
     for (const st of stations.values()) this.stationViews.set(st, new StationView(this, st));
+    // From day 2, a price tag on each old cupboard hints that something can be built there.
+    if (this.dayNumber >= 2) for (const st of stations.values()) if (st.type === 'spot') this.stationViews.get(st).showTag();
 
     this.day = new Day(this.dayNumber);
-    this.customers = new Customers(this.dayNumber, (event, c, extra) => this.onCustomer(event, c, extra), loadSave().returning);
+    this.customers = new Customers(this.dayNumber, (event, c, extra) => this.onCustomer(event, c, extra), loadSave().returning, this.recipes());
 
     this.buildPlayer();
     this.mood = new Mood(this);
@@ -79,7 +86,16 @@ export class KitchenScene extends Phaser.Scene {
 
     this.keys = this.input.keyboard.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,E,SPACE');
     for (const key of ['ESC', 'P', 'H']) this.input.keyboard.on(`keydown-${key}`, () => this.openHelp());
+    // Back from the help or the catalog: forget the keys pressed there (an E that built an oven must not use it too).
+    const forgetKeys = () => this.input.keyboard.resetKeys();
+    this.events.on('resume', forgetKeys);
+    this.events.once('shutdown', () => this.events.off('resume', forgetKeys));
     this.cameras.main.fadeIn(400);
+  }
+
+  // Recipes this kitchen can make (pão de queijo needs the clay oven).
+  recipes() {
+    return availableRecipes(new Set([...this.stations.values()].filter(isCooker).map((s) => s.type)));
   }
 
   // Orders on the deck (guests walking in or waiting), oldest first. QA and the HUD read this; `.recipe` is writable.
@@ -98,11 +114,59 @@ export class KitchenScene extends Phaser.Scene {
     return this.customers.debugSpawn(id, recipe, walk);
   }
 
+  // Debug helper (?debug): coins for testing the catalog, e.g. debugCoins(100). Saved like a purchase.
+  debugCoins(n = 50) {
+    this.wallet += n;
+    writeSave({ coins: this.wallet });
+    return this.wallet;
+  }
+
   openHelp() {
     if (this.ending) return;
     audio.stopLoops();
     this.scene.launch('help');
     this.scene.pause();
+  }
+
+  // The catalog of an old cupboard, over the paused kitchen (like the help).
+  openCatalog(spot) {
+    if (this.ending) return;
+    audio.stopLoops();
+    this.scene.launch('catalog', { spot });
+    this.scene.pause();
+  }
+
+  // The catalog bought upgrade `id` for this old cupboard: it becomes that station, for good (saved right away).
+  build(spot, id) {
+    const key = `${spot.tx},${spot.ty}`;
+    if (this.stations.get(key) !== spot || spot.type !== 'spot' || Object.values(this.upgrades).includes(id)) return null;
+    const station = spotStation(spot.tx, spot.ty, id);
+    this.stationViews.get(spot).destroy();
+    this.stationViews.delete(spot);
+    this.stations.set(key, station);
+    this.stationViews.set(station, new StationView(this, station));
+    this.wallet -= UPGRADES[id].price;
+    this.upgrades = { ...this.upgrades, [key]: id };
+    writeSave({ coins: this.wallet, upgrades: this.upgrades });
+    this.customers.recipes = this.recipes();
+    this.target = null;
+    const [x, y] = [tileCenter(spot.tx), tileCenter(spot.ty)];
+    [[0, 0], [-TILE * 0.35, -TILE * 0.2], [TILE * 0.35, -TILE * 0.1]].forEach(([dx, dy], i) => {
+      this.time.delayedCall(i * 180, () => fx.sparkle(this, x + dx, y + dy));
+    });
+    fx.text(this, x, y - TILE * 0.6, t('catalog.built'));
+    this.events.emit('build', station);
+    return station;
+  }
+
+  // Close up early (from the help): closing time starts now, the clock stays where it is. Unserved guests say
+  // goodbye and come back tomorrow, floor coins fly to the chef, then the diary - the same path as the night.
+  closeEarly() {
+    if (this.closing || this.ending) return;
+    this.closedEarly = true;
+    this.day.close();
+    this.events.emit('phase', 'closing');
+    this.startClosing();
   }
 
   // The physics body is an invisible box, smaller than a tile so corners feel forgiving; ChefView draws the chef.
@@ -179,7 +243,14 @@ export class KitchenScene extends Phaser.Scene {
     this.move(dt);
     this.target = this.findTarget();
     const { E, SPACE } = this.keys;
-    if (this.target && (Phaser.Input.Keyboard.JustDown(E) || Phaser.Input.Keyboard.JustDown(SPACE))) this.use(this.target);
+    if (this.target && (Phaser.Input.Keyboard.JustDown(E) || Phaser.Input.Keyboard.JustDown(SPACE))) {
+      this.use(this.target);
+      this.chopAgainAt = time + CHOP_REPEAT_MS;
+    } else if (this.target && (E.isDown || SPACE.isDown) && time >= this.chopAgainAt && this.choppable(this.target)) {
+      // Holding E keeps chopping (only chopping repeats).
+      this.use(this.target);
+      this.chopAgainAt = time + CHOP_REPEAT_MS;
+    }
 
     this.collectCoins();
     this.draw(time);
@@ -230,6 +301,7 @@ export class KitchenScene extends Phaser.Scene {
       guests: this.customers.log.map((c) => ({ id: c.id, recipe: c.recipe, mood: c.mood, dish: c.dish, line: c.line })),
       coinsToday: this.coinsToday,
       coinsTotal: this.wallet,
+      early: this.closedEarly,
     };
     this.cameras.main.fadeOut(600, 0, 0, 0);
     this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('diary', summary));
@@ -305,6 +377,11 @@ export class KitchenScene extends Phaser.Scene {
     return { waiting: this.customers.waiting.length, closing: this.closing };
   }
 
+  // Would E chop here right now?
+  choppable(station) {
+    return resolve(station, this.held, this.context()).action === 'chop';
+  }
+
   use(station) {
     const res = resolve(station, this.held, this.context());
     if (!res.action) {
@@ -317,6 +394,10 @@ export class KitchenScene extends Phaser.Scene {
     this.events.emit('interact', station, res.action);
     if (res.action === 'serve') {
       this.serve(station);
+      return;
+    }
+    if (res.action === 'browse') {
+      this.openCatalog(station);
       return;
     }
     this.held = res.run();
@@ -471,12 +552,12 @@ export class KitchenScene extends Phaser.Scene {
     return [...this.stations.values()].find(ordered) ?? null;
   }
 
-  // The board, when it holds raw cheese (alone or on dough) that an open order still needs chopped; else null.
+  // A board holding raw cheese (alone or on dough) that an open order still needs chopped; else null.
   // Chopped cheese already waiting (on a counter, in hand, or inside a raw pastel) counts towards those orders.
   boardWork() {
     const all = [...this.stations.values()];
-    const board = all.find((s) => s.type === 'board');
-    if (!board.item || ingredientKey(board.item) !== 'cheese') return null;
+    const board = all.find((s) => s.type === 'board' && s.item && ingredientKey(s.item) === 'cheese');
+    if (!board) return null;
     const keys = [...all.map((s) => s.item), this.held].filter((item) => item && !item.dish).map(ingredientKey);
     const ready = keys.filter((key) => key === 'cheese:chopped' || key === 'pastel').length;
     const needs = this.openRecipes().filter((recipe) => this.needsKey(recipe, 'cheese:chopped')).length;
@@ -506,7 +587,8 @@ export class KitchenScene extends Phaser.Scene {
     const key = ingredientKey(held);
     const all = [...this.stations.values()];
     const find = (fn) => all.find(fn) ?? null;
-    const board = find((s) => s.type === 'board');
+    // There can be two boards (an upgrade): raw cheese and dough look for one that is free for them.
+    const boards = all.filter((s) => s.type === 'board');
     const pots = all.filter((s) => s.type === 'pot');
     const hint = NEXT_FOR_INGREDIENT[key] ?? 'toPot';
     // Nobody ordered anything that uses it: no arrow into an empty pot, just a gentle way to set it aside.
@@ -518,24 +600,33 @@ export class KitchenScene extends Phaser.Scene {
     // Raw cheese goes on an empty board, or on top of dough waiting there. A board busy chopping other cheese
     // waits; anything else on it swaps into the chef's hands.
     if (key === 'cheese') {
-      if (!board.item || (ingredientKey(board.item) === 'dough' && !board.under)) return { hint, station: board };
-      return ingredientKey(board.item) === 'cheese' ? { hint: 'cheeseWait', station: null } : { hint: 'cheeseSwap', station: board };
+      const free = boards.find((b) => !b.item || (ingredientKey(b.item) === 'dough' && !b.under));
+      if (free) return { hint, station: free };
+      const swap = boards.find((b) => ingredientKey(b.item) !== 'cheese');
+      return swap ? { hint: 'cheeseSwap', station: swap } : { hint: 'cheeseWait', station: null };
     }
     if (key === 'dough') {
       const cheese = find((s) => s.item && ingredientKey(s.item) === 'cheese:chopped');
       if (cheese) return { hint, station: cheese };
       // No chopped cheese yet: the dough can wait on the board, under the cheese (see stations.js holder()).
-      const free = !board.item || (ingredientKey(board.item) === 'cheese' && !board.under);
-      return free ? { hint: 'doughBoard', station: board } : { hint: 'doughWait', station: null };
+      const free = boards.find((b) => !b.item || (ingredientKey(b.item) === 'cheese' && !b.under));
+      return free ? { hint: 'doughBoard', station: free } : { hint: 'doughWait', station: null };
     }
     if (key === 'pastel') return { hint, station: find((s) => s.type === 'fryer' && !s.contents.length) };
     // A pot already on its way to a recipe somebody ordered and still missing this.
     const open = this.openRecipes();
     const pot = pots.find((s) => s.contents.length && open.includes(cookerStatus(s).recipe) && cookerStatus(s).missing.includes(key));
     if (key === 'cheese:chopped') {
-      // Only a pastel wants it: no pot, it waits for dough (on the board when it is free).
-      const forPot = open.some((recipe) => RECIPES[recipe].needs.includes(key));
-      if (!forPot) return { hint: 'choppedPastel', station: board.item ? null : board };
+      // Pão de queijo: straight into a free oven (a busy one bakes another batch first).
+      if (open.includes('paodequeijo')) {
+        const oven = find((s) => s.type === 'oven' && !s.contents.length);
+        const onlyBread = open.every((recipe) => recipe === 'paodequeijo');
+        if (oven) return { hint: 'choppedOven', station: oven };
+        if (onlyBread) return { hint: 'ovenWait', station: null };
+      }
+      // Only a pastel wants it: no pot, it waits for dough (on a free board).
+      const forPot = open.some((recipe) => RECIPES[recipe].cooker === 'pot' && RECIPES[recipe].needs.includes(key));
+      if (!forPot) return { hint: 'choppedPastel', station: boards.find((b) => !b.item) ?? null };
       return { hint, station: pot ?? pots.find((s) => !s.contents.length) ?? null };
     }
     const empty = pots.find((s) => !s.contents.length);

@@ -2,7 +2,7 @@
 // The whole scene (lake, banks, walls, floor, stations, deck, decor) is painted once into three small canvases at
 // 16 px per tile, one per water frame, and shown at ART_SCALE. Swapping them animates the water for the cost of
 // one image per frame, the same in Canvas and WebGL.
-import { TILE, MAP, STATIONS, CRATES, TERRAIN, SPRITES, DECOR, KITCHEN, DECK } from './data.js';
+import { TILE, MAP, STATIONS, CRATES, TERRAIN, SPRITES, DECOR, KITCHEN, DECK, UPGRADES } from './data.js';
 import { DEPTH } from './views.js';
 import { ART_FRAMES, WALL_TALL_FRAMES } from '../assets/art/frames.js';
 
@@ -23,6 +23,8 @@ const isDeck = (tx, ty) => TERRAIN[at(tx, ty)] === 'deck';
 function kindAt(tx, ty) {
   const ch = at(tx, ty);
   if (CRATES[ch]) return 'crate';
+  // Old cupboards are baked as plain counters: their own sprite (or what was built there) is drawn on top.
+  if (STATIONS[ch]?.type === 'spot') return 'counter';
   if (STATIONS[ch]) return STATIONS[ch].type;
   // Wall tiles inside the room's right column are wall; the other ring corners are plain counters.
   if (TERRAIN[ch] === 'wall') return tx === KITCHEN.right ? 'wall' : 'counter';
@@ -137,15 +139,27 @@ export function newStation(type, tx, ty, kind = null) {
   return { type, tx, ty, kind, item: null, under: null, chops: 0, contents: [], progress: 0 };
 }
 
+// The old cupboards (U tiles), as "tx,ty" keys.
+export const SPOT_KEYS = MAP.flatMap((row, ty) => [...row].flatMap((ch, tx) => (STATIONS[ch]?.type === 'spot' ? [`${tx},${ty}`] : [])));
+
+// A station standing on an old cupboard tile: the cupboard itself, or the upgrade built there (upgrade id or null).
+// `onSpot` tells StationView to draw its body (the baked map only has a counter there).
+export function spotStation(tx, ty, upgrade = null) {
+  return { ...newStation(upgrade ? UPGRADES[upgrade].type : 'spot', tx, ty), onSpot: true, upgrade };
+}
+
 // -> { ground: the baked map image, walls: arcade static group, stations: Map "tx,ty" -> station state }
-export function buildKitchen(scene) {
+// upgrades: { "tx,ty": upgrade id } built on the old cupboards (from the save).
+export function buildKitchen(scene, upgrades = {}) {
   const ground = addMapImage(scene);
   const walls = scene.physics.add.staticGroup();
   const stations = new Map();
   MAP.forEach((row, ty) => [...row].forEach((ch, tx) => {
     const kind = CRATES[ch] ?? null;
     const def = STATIONS[ch];
-    if (def || kind) stations.set(`${tx},${ty}`, newStation(def?.type ?? 'crate', tx, ty, kind));
+    const key = `${tx},${ty}`;
+    if (def?.type === 'spot') stations.set(key, spotStation(tx, ty, upgrades[key] ?? null));
+    else if (def || kind) stations.set(key, newStation(def?.type ?? 'crate', tx, ty, kind));
   }));
   for (const { x, y, w, h } of solidRects()) {
     walls.add(scene.add.zone(x * TILE + (w * TILE) / 2, y * TILE + (h * TILE) / 2, w * TILE, h * TILE));
