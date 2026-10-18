@@ -176,7 +176,38 @@
   "gift_hammock": 170,
   "gift_garland": 171,
   "gift_lilylamp": 172,
-  "gift_lobeira": 173
+  "gift_lobeira": 173,
+  "heart_empty": 174,
+  "hammock_wide_0": 175,
+  "hammock_wide_1": 176,
+  "hammock_wide_2": 177,
+  "bromeliad": 178,
+  "candles": 179,
+  "bunting_0": 180,
+  "bunting_1": 181,
+  "bunting_2": 182,
+  "lights_rainbow_0": 183,
+  "lights_rainbow_1": 184,
+  "lights_rainbow_2": 185,
+  "lights_blue": 186,
+  "chef_down_0_leaf": 187,
+  "chef_down_1_leaf": 188,
+  "chef_up_0_leaf": 189,
+  "chef_up_1_leaf": 190,
+  "chef_side_0_leaf": 191,
+  "chef_side_1_leaf": 192,
+  "chef_down_0_sky": 193,
+  "chef_down_1_sky": 194,
+  "chef_up_0_sky": 195,
+  "chef_up_1_sky": 196,
+  "chef_side_0_sky": 197,
+  "chef_side_1_sky": 198,
+  "chef_down_0_sun": 199,
+  "chef_down_1_sun": 200,
+  "chef_up_0_sun": 201,
+  "chef_up_1_sun": 202,
+  "chef_side_0_sun": 203,
+  "chef_side_1_sun": 204
  },
  "anims": {
   "coin": [
@@ -212,13 +243,49 @@
    "chef_down_0",
    "chef_down_1"
   ],
+  "chef_down_leaf": [
+   "chef_down_0_leaf",
+   "chef_down_1_leaf"
+  ],
+  "chef_down_sky": [
+   "chef_down_0_sky",
+   "chef_down_1_sky"
+  ],
+  "chef_down_sun": [
+   "chef_down_0_sun",
+   "chef_down_1_sun"
+  ],
   "chef_up": [
    "chef_up_0",
    "chef_up_1"
   ],
+  "chef_up_leaf": [
+   "chef_up_0_leaf",
+   "chef_up_1_leaf"
+  ],
+  "chef_up_sky": [
+   "chef_up_0_sky",
+   "chef_up_1_sky"
+  ],
+  "chef_up_sun": [
+   "chef_up_0_sun",
+   "chef_up_1_sun"
+  ],
   "chef_side": [
    "chef_side_0",
    "chef_side_1"
+  ],
+  "chef_side_leaf": [
+   "chef_side_0_leaf",
+   "chef_side_1_leaf"
+  ],
+  "chef_side_sky": [
+   "chef_side_0_sky",
+   "chef_side_1_sky"
+  ],
+  "chef_side_sun": [
+   "chef_side_0_sun",
+   "chef_side_1_sun"
   ],
   "capybara_front": [
    "capybara_front_0",

@@ -2,6 +2,7 @@
 // Almost everything is a frame of one self-made sheet, 'art' (assets/art/art.png, names in assets/art/frames.js).
 import {
   TILE, ART_SCALE, INGREDIENTS, RECIPES, MYSTERY, ASSEMBLIES, CHOPS_NEEDED, SPRITES, KITCHEN, DECK, FLICKER, GIFTS, FRIEND_HEARTS,
+  DECK_DECOR,
 } from './data.js';
 import { matchRecipe, isCooker, waitingFor } from './stations.js';
 import { ART_FRAMES } from '../assets/art/frames.js';
@@ -165,20 +166,56 @@ export const fx = {
   },
 };
 
-// A regular's gift on its deck spot (bottom centre on the tile's bottom edge, plus its offset in art px), behind guests.
-export function giftImage(scene, id) {
-  const { art, tx, ty, dx = 0, dy = 0 } = GIFTS[id];
-  return artImage(scene, tileCenter(tx) + px(dx), (ty + 1) * TILE + px(dy), art).setOrigin(0.5, 1).setDepth(DEPTH.lantern);
+// Art several tiles wide (frames <name>_0, <name>_1... side by side), joined once into its own texture.
+export function wideArt(scene, name, cols) {
+  const key = `wide_${name}`;
+  if (!scene.textures.exists(key)) {
+    const tex = scene.textures.createCanvas(key, cols * 16, 16);
+    const ctx = tex.getContext();
+    for (let i = 0; i < cols; i++) {
+      const f = scene.textures.getFrame(ART, ART_FRAMES[`${name}_${i}`]);
+      ctx.drawImage(f.source.image, f.cutX, f.cutY, 16, 16, i * 16, 0, 16, 16);
+    }
+    tex.refresh();
+    tex.setFilter(Phaser.Textures.FilterMode.NEAREST); // after refresh(), like the baked map
+  }
+  return key;
 }
 
-// A row of friendship hearts (filled up to n, the newest one pops), drifting up and fading.
-export function heartRow(scene, x, y, n, scale = 4) {
-  const step = 16 * scale * 0.75;
-  const hearts = Array.from({ length: FRIEND_HEARTS }, (_, i) => artImage(scene, x + (i - (FRIEND_HEARTS - 1) / 2) * step, y, 'heart_friend', scale)
-    .setAlpha(i < n ? 1 : 0.5).setDepth(DEPTH.fx));
-  pop(scene, hearts[n - 1], scale);
-  scene.tweens.add({ targets: hearts, y: y - px(4), alpha: 0, delay: 1600, duration: 700, onComplete: () => hearts.forEach((h) => h.destroy()) });
-  return hearts;
+// A piece of deck decor on its fixed spot (a regular's gift, or something from the deck catalog): bottom centre on
+// the tile's bottom edge plus its offset in art px, behind guests. def: { art, cols?, tx, ty, dx?, dy? }.
+export function placeImage(scene, { art, cols = 1, tx, ty, dx = 0, dy = 0 }) {
+  const x = tileCenter(tx) + px(dx);
+  const y = (ty + 1) * TILE + px(dy);
+  const img = cols > 1 ? scene.add.image(x, y, wideArt(scene, art, cols)).setScale(S) : artImage(scene, x, y, art);
+  return img.setOrigin(0.5, 1).setDepth(DEPTH.lantern);
+}
+
+export const giftImage = (scene, id) => placeImage(scene, GIFTS[id]);
+
+// The same art as a small picture (catalog cards, notices), centred on (x, y). `bulbs`: a short string of lights
+// (frames used round and round, three tiles side by side).
+export function decorIcon(scene, x, y, { art, cols = 1, bulbs }, scale = S) {
+  if (bulbs) {
+    const w = 16 * scale;
+    const tiles = [0, 1, 2].map((i) => artImage(scene, (i - 1) * w, 0, bulbs[i % bulbs.length], scale));
+    return scene.add.container(x, y, tiles).setSize(w * 3, w);
+  }
+  return cols > 1 ? scene.add.image(x, y, wideArt(scene, art, cols)).setScale(scale) : artImage(scene, x, y, art, scale);
+}
+
+// What a deck catalog thing looks like on a card or a notice: its art, the first bulb colour, or the chef in the apron.
+export const catalogArt = (id) => {
+  const def = DECK_DECOR[id];
+  if (def.kind === 'lights') return { bulbs: def.frames };
+  if (def.kind === 'apron') return { art: `chef_down_0_${id}` };
+  return def;
+};
+
+// Friendship hearts out of FRIEND_HEARTS, left to right from x (centre of the first): pink for each one earned,
+// a grey outline for each empty slot. Returns the images.
+export function heartIcons(scene, x, y, n, scale = 2, step = 16 * scale * 0.72) {
+  return Array.from({ length: FRIEND_HEARTS }, (_, i) => artImage(scene, x + i * step, y, i < n ? 'heart_friend' : 'heart_empty', scale));
 }
 
 // Serve confetti colors, by recipe (and 'mystery').
@@ -477,16 +514,18 @@ export class ChefView {
     this.shadow = scene.add.ellipse(x, y, px(10.5), px(3.5), 0x2b1d1a, 0.28).setDepth(DEPTH.shadow);
     this.sprite = scene.add.sprite(x, y, ART, ART_FRAMES.chef_up_0).setScale(S).setDepth(DEPTH.chef);
     this.held = new ItemView(scene, x, y, DEPTH.held);
+    this.apron = ''; // '' (the red one) or '_<apron id>' from the deck catalog: frames chef_<dir>_<n><apron>
   }
 
   sync(x, y, facing, moving, heldItem) {
     const dir = facing.x ? 'side' : facing.y < 0 ? 'up' : 'down';
-    const { sprite } = this;
+    const { sprite, apron } = this;
     sprite.setFlipX(facing.x < 0).setPosition(x, y - px(2.5));
-    if (moving) sprite.play(`chef_${dir}`, true);
-    else if (sprite.anims.isPlaying || sprite.frame.name !== ART_FRAMES[`chef_${dir}_0`]) {
+    const rest = ART_FRAMES[`chef_${dir}_0${apron}`];
+    if (moving) sprite.play(`chef_${dir}${apron}`, true);
+    else if (sprite.anims.isPlaying || sprite.frame.name !== rest) {
       sprite.stop();
-      sprite.setFrame(ART_FRAMES[`chef_${dir}_0`]);
+      sprite.setFrame(rest);
     }
     this.shadow.setPosition(x, y + px(5));
     const [hx, hy] = dir === 'side' ? [facing.x * 6, 1.5] : dir === 'up' ? [6, -0.5] : [0, 3];
@@ -566,11 +605,6 @@ export class CustomerView {
     else this.bubble.hide();
     // A spoken line is kept on screen while a guest walks out past the right edge.
     this.bubble.setPosition(Math.min(x + px(6.5), this.scene.scale.width - 30 - this.bubble.w), feet - px(13));
-  }
-
-  // A regular likes the chef a little more: hearts (n of FRIEND_HEARTS) over their head.
-  showHearts(c, n) {
-    heartRow(this.scene, c.x * TILE + TILE / 2, customerFeet(c.ty) - px(17), n, 3.5);
   }
 
   react(c, x, feet) {

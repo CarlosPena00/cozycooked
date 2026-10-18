@@ -5,6 +5,10 @@ import { CUSTOMERS } from './data.js';
 import { t, dishName } from './text.js';
 import { TEXT, SMALL, INK, COLORS, DEPTH, ART, artFrame, artImage, recipeArt, portraitArt, pop, mixColor } from './views.js';
 
+// Notices (a heart earned, a gift, something bought): cream pills over the open water above the deck, in up to two
+// lanes so they never overlap each other (more wait their turn). x is the centre, kept between minX and maxX.
+const NOTICE = { x: 1590, lanes: [262, 198], h: 50, minX: 1262, maxX: 1908, ms: 4000 };
+
 const CARD = { x: 16, y: 16, w: 356, h: 112, gap: 12 };
 const CLOCK = { x: 1654, y: 16, w: 250, h: 112 };
 const BOTTOM = { x: 16, y: 970, w: 1236, h: 98 };
@@ -68,6 +72,59 @@ export class Hud {
     this.muteText = add(scene.add.text(COINS.x + COINS.w / 2, COINS.y - 8, t('hud.muted'), { ...SMALL, color: COLORS.muted }).setOrigin(0.5, 1));
 
     this.label = new ActionLabel(scene);
+    this.notices = { lanes: NOTICE.lanes.map(() => null), queue: [] };
+  }
+
+  // A notice pill for about 4 s: { id: guest portrait (optional), text, icons: (scene) => [images] after the text }.
+  notice(n) {
+    this.notices.queue.push(n);
+    this.nextNotice();
+  }
+
+  nextNotice() {
+    const { lanes, queue } = this.notices;
+    let lane = lanes.indexOf(null);
+    while (queue.length && lane >= 0) {
+      lanes[lane] = this.openNotice(queue.shift(), lane);
+      lane = lanes.indexOf(null);
+    }
+  }
+
+  openNotice({ id, text, icons }, lane) {
+    const { scene } = this;
+    const h = NOTICE.h;
+    const parts = [];
+    let x = 16;
+    if (id) {
+      parts.push(artImage(scene, x + 20, 0, portraitArt(id), 2.5));
+      x += 50;
+    }
+    const label = scene.add.text(x, 0, text, { ...INK, fontSize: '26px' }).setOrigin(0, 0.5);
+    parts.push(label);
+    x += label.width + 14;
+    for (const icon of icons?.(scene) ?? []) {
+      icon.setPosition(x + icon.displayWidth / 2, 0);
+      parts.push(icon);
+      x += icon.displayWidth + 2;
+    }
+    const w = x + 14;
+    const g = scene.add.graphics();
+    g.fillStyle(0x1b1210, 0.22).fillRoundedRect(2, -h / 2 + 4, w, h, h / 2);
+    g.fillStyle(COLORS.paper, 0.97).fillRoundedRect(0, -h / 2, w, h, h / 2);
+    g.lineStyle(3, COLORS.paperEdge).strokeRoundedRect(0, -h / 2, w, h, h / 2);
+    const left = Math.max(NOTICE.minX, Math.min(NOTICE.x - w / 2, NOTICE.maxX - w));
+    const box = scene.add.container(Math.round(left), NOTICE.lanes[lane], [g, ...parts]).setDepth(DEPTH.hud).setAlpha(0);
+    box.y += 12;
+    scene.tweens.add({ targets: box, alpha: 1, y: NOTICE.lanes[lane], duration: 260, ease: 'Back.easeOut' });
+    scene.tweens.add({
+      targets: box, alpha: 0, y: NOTICE.lanes[lane] - 14, delay: NOTICE.ms, duration: 500,
+      onComplete: () => {
+        box.destroy();
+        this.notices.lanes[lane] = null;
+        this.nextNotice();
+      },
+    });
+    return box;
   }
 
   // orders: waiting customers, oldest first. dayProgress: 0..1 over the day. dark: 0 (day) .. 1 (night).
@@ -116,7 +173,7 @@ export class Hud {
 
   // Two small sparkles over the pouch (on top of the HUD, unlike fx.sparkle).
   sparklePouch() {
-    [[-18, -26, 3], [20, -12, 2]].forEach(([dx, dy, scale], i) => {
+    [[-18, -26, 4], [20, -12, 3]].forEach(([dx, dy, scale], i) => {
       const s = this.scene.add.sprite(this.pouch.x + dx, this.pouch.y + dy, ART, artFrame('sparkle_0'))
         .setScale(scale).setAlpha(0.85).setDepth(DEPTH.hud + 1);
       s.playAfterDelay('sparkle', i * 140);

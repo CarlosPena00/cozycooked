@@ -6,10 +6,11 @@
 //   coinLand (coin)   coinPick (coin)   phase (phaseId)   lanternsOn ()   customer (event, customer, extra)
 //   nope (station): E did nothing   build (station): an old cupboard became something new
 //   heart (customer, hearts): a regular likes the chef a little more   gift (id): a regular left a gift on the deck
+//   decor (id): something from the deck catalog was bought or put in use
 import {
   TILE, ART_SCALE, SPEED, CHOPS_NEEDED, COIN_PICK_RADIUS, PLAYER_START, INGREDIENTS, COOKERS, COOK_LOOPS, COOK_GRACE,
   CRATES, CUSTOMERS, DAY, DECK, KITCHEN, MAP, NEXT_FOR_INGREDIENT, RECIPES, ASSEMBLIES, GUIDE_DISHES, UPGRADES, COIN_LADDER,
-  FRIEND_HEARTS, GIFTS, availableRecipes,
+  FRIEND_HEARTS, GIFTS, DECK_DECOR, availableRecipes,
 } from '../data.js';
 import { resolve, cook, isCooker, ingredientKey, cookerStatus, waitingFor } from '../stations.js';
 import { Day } from '../day.js';
@@ -22,6 +23,7 @@ import { loadSave, writeSave } from '../save.js';
 import { t, itemName, dishName, stationName, keyName } from '../text.js';
 import {
   ART, DEPTH, tileCenter, artFrame, itemArt, fx, wiggle, StationView, CustomerView, ChefView, GuideArrow, giftImage,
+  placeImage, decorIcon, heartIcons, catalogArt,
 } from '../views.js';
 
 // Which extra event each action emits (besides `interact`).
@@ -70,9 +72,16 @@ export class KitchenScene extends Phaser.Scene {
     this.ladder = { step: -1, at: -Infinity }; // the coin chime's place on its scale, and when it last rang
 
     this.upgrades = loadSave().upgrades; // { "tx,ty": upgrade id } built on the old cupboards
-    this.friends = loadSave().friends; // { species: hearts }
-    this.gifts = loadSave().gifts; // species whose gift stands on the deck
+    const save = loadSave();
+    this.friends = save.friends; // { species: hearts }
+    this.heartDays = save.heartDays; // { species: the day it last earned a heart } (one a day)
+    this.gifts = save.gifts; // species whose gift stands on the deck
+    this.giftsToday = []; // for the diary
     this.giftViews = new Map(this.gifts.map((id) => [id, giftImage(this, id)]));
+    this.decor = save.decor; // deck catalog things owned, { id: true }
+    this.lights = save.lights; // the string-light colour in use (null: warm)
+    this.apron = save.apron; // the chef's apron in use (null: red)
+    this.decorViews = new Map(Object.keys(this.decor).filter((id) => DECK_DECOR[id].kind === 'place').map((id) => [id, placeImage(this, DECK_DECOR[id])]));
     const { ground, walls, stations } = buildKitchen(this, this.upgrades);
     this.ground = ground;
     this.walls = walls;
@@ -83,16 +92,24 @@ export class KitchenScene extends Phaser.Scene {
     if (this.dayNumber >= 2) for (const st of stations.values()) if (st.type === 'spot') this.stationViews.get(st).showTag();
 
     this.day = new Day(this.dayNumber);
-    this.customers = new Customers(this.dayNumber, (event, c, extra) => this.onCustomer(event, c, extra), loadSave().returning, this.recipes());
+    this.customers = new Customers(this.dayNumber, (event, c, extra) => this.onCustomer(event, c, extra), save.returning, this.recipes());
+    // Yesterday's treat (the oven was built after the last guest came): the first new guest today orders it.
+    this.customers.firstOrder = save.firstOrder;
 
     this.buildPlayer();
     this.mood = new Mood(this);
+    this.mood.setLights(DECK_DECOR[this.lights] ?? null);
+    for (const id of [...this.gifts.filter((g) => GIFTS[g].lamp), ...[...this.decorViews.keys()].filter((d) => DECK_DECOR[d].lamp)]) {
+      this.addLamp(this.giftViews.get(id) ?? this.decorViews.get(id));
+    }
+    this.chef.apron = this.apron ? `_${this.apron}` : '';
     this.hud = new Hud(this);
     audio.bind(this);
     this.bindJuice();
 
     this.keys = this.input.keyboard.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,E,SPACE');
     for (const key of ['ESC', 'P', 'H']) this.input.keyboard.on(`keydown-${key}`, () => this.openHelp());
+    this.input.keyboard.on('keydown-C', () => this.openCatalog(null)); // the deck catalog, from anywhere
     // Back from the help or the catalog: forget the keys pressed there (an E that built an oven must not use it too).
     const forgetKeys = () => this.input.keyboard.resetKeys();
     this.events.on('resume', forgetKeys);
@@ -135,7 +152,7 @@ export class KitchenScene extends Phaser.Scene {
     this.scene.pause();
   }
 
-  // The catalog of an old cupboard, over the paused kitchen (like the help).
+  // The catalog over the paused kitchen (like the help): an old cupboard's furniture, or (spot = null) the deck's.
   openCatalog(spot) {
     if (this.ending) return;
     audio.stopLoops();
@@ -164,9 +181,55 @@ export class KitchenScene extends Phaser.Scene {
     [[0, 0], [-TILE * 0.35, -TILE * 0.2], [TILE * 0.35, -TILE * 0.1]].forEach(([dx, dy], i) => {
       this.time.delayedCall(i * 180, () => fx.sparkle(this, x + dx, y + dy));
     });
-    fx.text(this, x, y - TILE * 0.6 - 30, t('catalog.built'));
+    // Under the cupboard: the chef stands above it, so the word never covers the hat.
+    fx.text(this, x, y + TILE * 0.5 + 54, t('catalog.built'));
     this.events.emit('build', station);
     return station;
+  }
+
+  // The deck catalog bought `id` (cosmetic): it appears on its spot, or is put in use (lights, apron). Saved at once.
+  buyDecor(id) {
+    const def = DECK_DECOR[id];
+    if (!def || this.decor[id] || this.wallet < def.price) return false;
+    this.wallet -= def.price;
+    this.spentToday += def.price;
+    this.decor = { ...this.decor, [id]: true };
+    writeSave({ coins: this.wallet, decor: this.decor });
+    if (def.kind === 'place') {
+      const img = placeImage(this, def);
+      this.decorViews.set(id, img);
+      if (def.lamp) this.addLamp(img);
+      const scale = img.scale;
+      img.setScale(scale * 0.4);
+      this.tweens.add({ targets: img, scale, duration: 420, ease: 'Back.easeOut', easeParams: [3] });
+      fx.sparkle(this, img.x, img.y - img.displayHeight / 2);
+    } else this.useDecor(id, true);
+    this.hud.notice({ text: t('catalog.bought', { name: def.name }), icons: (scene) => [decorIcon(scene, 0, 0, catalogArt(id), def.cols || def.kind === 'lights' ? 2 : 3)] });
+    this.events.emit('decor', id);
+    return true;
+  }
+
+  // Put an owned light colour or apron in use (on) or away (off: back to the warm bulbs / the red apron).
+  useDecor(id, on) {
+    const def = DECK_DECOR[id];
+    if (!def || !this.decor[id] || def.kind === 'place') return;
+    const value = on ? id : null;
+    if (def.kind === 'lights') {
+      this.lights = value;
+      this.mood.setLights(on ? def : null);
+      writeSave({ lights: value });
+    } else {
+      this.apron = value;
+      this.chef.apron = on ? `_${id}` : '';
+      this.chef.squash();
+      writeSave({ apron: value });
+    }
+    this.events.emit('decor', id);
+  }
+
+  // A lamp on the deck glows at night, a little above its bottom (where the flame or bulb is).
+  addLamp(img) {
+    this.mood.addLamp(img.x, img.y - img.displayHeight * 0.55);
   }
 
   // Close up early (from the help): closing time starts now, the clock stays where it is. Unserved guests say
@@ -327,7 +390,10 @@ export class KitchenScene extends Phaser.Scene {
     for (const coin of [...this.coins]) this.pickCoin(coin);
     const summary = {
       day: this.dayNumber,
-      guests: this.customers.log.map((c) => ({ id: c.id, recipe: c.recipe, mood: c.mood, dish: c.dish, line: c.line, heart: !!c.heart })),
+      guests: this.customers.log.map((c) => ({ id: c.id, recipe: c.recipe, mood: c.mood, dish: c.dish, line: c.line, heart: c.heart ?? 0 })),
+      gifts: this.giftsToday,
+      // A treat nobody ordered yet (the oven came after the last guest): tomorrow's first new guest orders it.
+      firstOrder: this.customers.firstOrder,
       coinsToday: this.coinsToday,
       coinsTotal: this.wallet,
       spent: this.spentToday,
@@ -458,32 +524,46 @@ export class KitchenScene extends Phaser.Scene {
     }
   }
 
-  // Regulars: their favorite just right earns a heart (never lost); a guest who came with every heart leaves a gift.
+  // Regulars: their favorite just right earns a heart (one per species a day, never lost); a guest who came with
+  // every heart leaves a gift.
   befriend(c, favorite) {
     const hearts = this.friends[c.id] ?? 0;
-    if (favorite && hearts < FRIEND_HEARTS) {
-      this.friends = { ...this.friends, [c.id]: hearts + 1 };
-      c.heart = true; // the diary puts a heart sticker on this line
-      writeSave({ friends: this.friends });
-      c.view.showHearts(c, hearts + 1);
-      this.events.emit('heart', c, hearts + 1);
+    if (favorite && hearts < FRIEND_HEARTS && this.heartDays[c.id] !== this.dayNumber) {
+      const n = hearts + 1;
+      this.friends = { ...this.friends, [c.id]: n };
+      this.heartDays = { ...this.heartDays, [c.id]: this.dayNumber };
+      c.heart = n; // the diary puts the hearts on this line
+      writeSave({ friends: this.friends, heartDays: this.heartDays });
+      const customer = CUSTOMERS[c.id].name.toLowerCase();
+      this.hud.notice({
+        id: c.id, text: t(n < FRIEND_HEARTS ? 'friends.heart' : 'friends.full', { customer }),
+        icons: (scene) => heartIcons(scene, 0, 0, n, 2.5, 30),
+      });
+      this.events.emit('heart', c, n);
     }
-    if (c.hearts >= FRIEND_HEARTS && !this.gifts.includes(c.id)) this.receiveGift(c.id);
+    if (c.hearts >= FRIEND_HEARTS && !this.gifts.includes(c.id)) {
+      c.view.say(t('friends.brought'), 3);
+      this.receiveGift(c.id);
+    }
   }
 
   // A regular's gift appears on its deck spot, for good.
   receiveGift(id) {
     this.gifts = [...this.gifts, id];
+    this.giftsToday.push(id);
     writeSave({ gifts: this.gifts });
     const img = giftImage(this, id);
     this.giftViews.set(id, img);
+    if (GIFTS[id].lamp) this.addLamp(img);
     const scale = img.scale;
     img.setScale(scale * 0.4);
     this.tweens.add({ targets: img, scale, duration: 420, delay: 600, ease: 'Back.easeOut', easeParams: [3] });
     this.time.delayedCall(600, () => {
       fx.sparkle(this, img.x, img.y - img.displayHeight / 2);
-      const label = fx.text(this, img.x, img.y - img.displayHeight - 8, t('friends.gift', { customer: CUSTOMERS[id].name.toLowerCase(), gift: GIFTS[id].name }));
-      label.x = Phaser.Math.Clamp(label.x, label.width / 2 + 20, this.scale.width - label.width / 2 - 20); // on screen
+      this.hud.notice({
+        id, text: t('friends.gift', { customer: CUSTOMERS[id].name.toLowerCase(), gift: GIFTS[id].name }),
+        icons: (scene) => [decorIcon(scene, 0, 0, GIFTS[id], GIFTS[id].cols ? 2 : 3)],
+      });
     });
     this.events.emit('gift', id);
   }

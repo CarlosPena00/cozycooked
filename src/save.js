@@ -1,13 +1,18 @@
 // Tiny versioned save in localStorage. Every access is wrapped: private mode or corrupt data just means defaults.
-import { CUSTOMERS, RECIPES, GUIDE_DISHES, MAP, STATIONS, UPGRADES, FRIEND_HEARTS, GIFTS } from './data.js';
+import { CUSTOMERS, RECIPES, GUIDE_DISHES, MAP, STATIONS, UPGRADES, FRIEND_HEARTS, GIFTS, DECK_DECOR } from './data.js';
 
 const KEY = 'cozycooked.save.v1';
 // returning: guests left unserved yesterday, [{ id, recipe }], who come first today.
 // dishesServed: every dish ever served (the guide arrow retires after GUIDE_DISHES).
 // upgrades: what was built on the old cupboards, { "tx,ty": upgrade id }; upgradeTip: the diary suggested them once.
-// friends: hearts per guest species, { id: 1..FRIEND_HEARTS }; gifts: species whose gift stands on the deck, [id].
+// friends: hearts per guest species, { id: 1..FRIEND_HEARTS }; heartDays: the day each species last earned one
+// (one heart a day); gifts: species whose gift stands on the deck, [id].
+// decor: deck catalog things bought, { id: true }; lights / apron: the owned one in use (null: the warm bulbs, the red
+// apron); decorTip: the diary suggested the deck catalog once. firstOrder: a dish the next new guest orders (the
+// first pão de queijo after the oven is built), kept until it is ordered.
 const DEFAULTS = {
-  version: 1, day: 1, coins: 0, muted: false, returning: [], dishesServed: 0, upgrades: {}, upgradeTip: false, friends: {}, gifts: [],
+  version: 1, day: 1, coins: 0, muted: false, returning: [], dishesServed: 0, upgrades: {}, upgradeTip: false, friends: {},
+  heartDays: {}, gifts: [], decor: {}, lights: null, apron: null, decorTip: false, firstOrder: null,
 };
 
 const wholeNumber = (n, min) => (Number.isInteger(n) && n >= min ? n : null);
@@ -39,6 +44,21 @@ const friends = (map) => {
   }
   return out;
 };
+// The day each species last earned a heart: known species, whole days from 1.
+const heartDays = (map) => {
+  const out = {};
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return out;
+  for (const id of Object.keys(CUSTOMERS)) if (Object.hasOwn(map, id) && wholeNumber(map[id], 1)) out[id] = map[id];
+  return out;
+};
+// Deck decor: known ids set to true; the one in use of a kind must be owned and of that kind.
+const decor = (map) => {
+  const out = {};
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return out;
+  for (const id of Object.keys(DECK_DECOR)) if (map[id] === true) out[id] = true;
+  return out;
+};
+const inUse = (id, owned, kind) => (typeof id === 'string' && owned[id] && DECK_DECOR[id].kind === kind ? id : null);
 // Gifts: species with a gift, each once.
 const gifts = (list) => (Array.isArray(list) ? list : []).filter((id, i, all) => Object.hasOwn(GIFTS, id) && all.indexOf(id) === i);
 
@@ -47,6 +67,7 @@ export function loadSave() {
     const raw = JSON.parse(localStorage.getItem(KEY));
     if (raw?.version !== 1) return { ...DEFAULTS };
     const day = wholeNumber(raw.day, 1) ?? DEFAULTS.day;
+    const owned = decor(raw.decor);
     return {
       version: 1,
       day,
@@ -58,7 +79,13 @@ export function loadSave() {
       upgrades: upgrades(raw.upgrades),
       upgradeTip: raw.upgradeTip === true,
       friends: friends(raw.friends),
+      heartDays: heartDays(raw.heartDays),
       gifts: gifts(raw.gifts),
+      decor: owned,
+      lights: inUse(raw.lights, owned, 'lights'),
+      apron: inUse(raw.apron, owned, 'apron'),
+      decorTip: raw.decorTip === true,
+      firstOrder: Object.hasOwn(RECIPES, raw.firstOrder ?? '') ? raw.firstOrder : null,
     };
   } catch {
     return { ...DEFAULTS };

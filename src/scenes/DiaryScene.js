@@ -1,9 +1,9 @@
 // The diary of the day, a notebook page: who came, what they ate, coins. Saves progress, then any key starts the next day.
-import { CUSTOMERS, STRINGS, UPGRADE_TIP_COINS } from '../data.js';
+import { CUSTOMERS, STRINGS, UPGRADE_TIP_COINS, DECOR_TIP_COINS, GIFTS } from '../data.js';
 import { loadSave, writeSave } from '../save.js';
 import { SPOT_KEYS } from '../map.js';
 import { t, pick, dishName } from '../text.js';
-import { HAND, ART, artFrame, artImage, dishArt, portraitArt } from '../views.js';
+import { HAND, ART, artFrame, artImage, dishArt, portraitArt, heartIcons } from '../views.js';
 
 const MAX_LINES = 12;
 const PAGE = { x: 330, y: 50, w: 1260, h: 980 };
@@ -11,6 +11,7 @@ const LINE = 46; // ruled line spacing
 const MOOD_ART = { happy: 'heart', cozycooked: 'heart_rustic', surprised: 'sparkle_1' };
 const DESK = 0x1d2236; // the punched holes show the night behind the page
 const MAX_STICKERS = 8;
+const LINE_RIGHT = PAGE.x + PAGE.w - 24; // the ruled lines end here: a line and its stickers stay inside
 
 export class DiaryScene extends Phaser.Scene {
   constructor() {
@@ -26,19 +27,26 @@ export class DiaryScene extends Phaser.Scene {
     return typeof line === 'string' ? line : line.text;
   }
 
-  // summary: { day, guests: [{ id, recipe, mood, dish }], coinsToday, coinsTotal, spent: coins spent today,
-  // early: closed up early, expected: returning guests who had not come yet }
+  // summary: { day, guests: [{ id, recipe, mood, dish, heart: hearts after this visit, or 0 }], coinsToday,
+  // coinsTotal, spent: coins spent today, early: closed up early, expected: returning guests who had not come yet,
+  // gifts: species who left a gift today, firstOrder: tomorrow's first new guest orders this (or null) }
   create(summary) {
-    const { day, guests, coinsToday, coinsTotal, spent = 0, early, expected = [] } = summary;
+    const { day, guests, coinsToday, coinsTotal, spent = 0, early, expected = [], gifts = [], firstOrder = null } = summary;
     // Guests nobody served come back first tomorrow, with the same order (the diary promises it), then the
     // returning guests who never made it today.
     const returning = [...guests.filter((g) => !g.mood).map(({ id, recipe }) => ({ id, recipe })), ...expected];
-    // Once, when the chef can afford something and a cupboard is still old: a tip about the catalog.
+    // Once, when the chef can afford something and nothing was built yet: a tip about the cupboards' catalog.
+    // Later (on another day), once, the same for the deck catalog.
     const save = loadSave();
-    const tip = !save.upgradeTip && coinsTotal >= UPGRADE_TIP_COINS && SPOT_KEYS.some((key) => !save.upgrades[key]);
-    writeSave({ day: day + 1, coins: coinsTotal, returning, ...(tip ? { upgradeTip: true } : {}) });
-    // Lines under the closing line (closed early, the tip): the totals move up to make room.
-    const extra = [...(early ? [t('diary.early')] : []), ...(tip ? [t('diary.tip')] : [])];
+    const tip = !save.upgradeTip && coinsTotal >= UPGRADE_TIP_COINS && !Object.keys(save.upgrades).length && SPOT_KEYS.length > 0;
+    const decorTip = !tip && !save.decorTip && coinsTotal >= DECOR_TIP_COINS && !Object.keys(save.decor).length
+      && Object.keys(save.upgrades).length > 0;
+    writeSave({
+      day: day + 1, coins: coinsTotal, returning, firstOrder, ...(tip ? { upgradeTip: true } : {}), ...(decorTip ? { decorTip: true } : {}),
+    });
+    // Lines under the closing line (gifts, closed early, a tip): the totals move up to make room.
+    const giftLines = gifts.map((id) => t('diary.gift', { customer: CUSTOMERS[id].name.toLowerCase(), gift: GIFTS[id].name }));
+    const extra = [...giftLines, ...(early ? [t('diary.early')] : []), ...(tip ? [t('diary.tip')] : []), ...(decorTip ? [t('diary.decorTip')] : [])];
 
     const served = guests.filter((g) => g.mood);
     this.page();
@@ -65,12 +73,16 @@ export class DiaryScene extends Phaser.Scene {
       const y = top + i * LINE;
       artImage(this, left - 40, y - 4, portraitArt(g.id), 2.5);
       const label = this.add.text(left, y, text, ink).setOrigin(0, 0.62);
+      // Stickers after the words: the dish, how they liked it, and a heart earned on this visit as a small row of
+      // hearts out of three (pink earned, grey outline still to come), so it never reads as the mood heart.
+      const stickers = (g.mood ? 96 : 0) + (g.heart ? 100 : 0);
+      for (let size = 36; size > 26 && left + label.width + stickers > LINE_RIGHT; size -= 2) label.setFontSize(size);
+      const end = left + label.width;
       if (g.mood) {
-        artImage(this, left + label.width + 34, y - 4, dishArt(g.dish), 2.5);
-        artImage(this, left + label.width + 78, y - 4, MOOD_ART[g.mood], 2);
+        artImage(this, end + 34, y - 4, dishArt(g.dish), 2.5);
+        artImage(this, end + 78, y - 4, MOOD_ART[g.mood], 2);
       }
-      // A friendship heart earned on this visit: a pink sticker, slightly tilted.
-      if (g.heart) artImage(this, left + label.width + 122, y - 6, 'heart_friend', 2.5).setAngle(-12);
+      if (g.heart) heartIcons(this, end + (g.mood ? 112 : 24), y - 4, g.heart, 1.75, 29);
     });
     if (guests.length > shown) {
       this.add.text(left, top + shown * LINE, t('diary.more', { n: guests.length - shown }), ink).setOrigin(0, 0.62);

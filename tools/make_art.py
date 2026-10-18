@@ -2614,43 +2614,143 @@ LOBEIRA_PAL = {"f": "#b8c84a", "F": "#7a9a3a", "h": "#eef4a8", "b": "#d9a066", "
 
 
 def hammock():
-    """A striped hammock slung between two posts, a little pillow at one end (the sloth's)."""
+    """Round 10's one-tile hammock (kept so later frame indexes never move; the deck uses hammock_wide)."""
     f = canvas(14, 12)
     post = rgb("#9a6438") + (255,)
     for y in range(1, 12):
         f.putpixel((0, y), post)
         f.putpixel((13, y), post)
-    rope = rgb("#e8d9b0") + (255,)
-    for x, y in ((1, 2), (2, 3), (12, 2), (11, 3)):
-        f.putpixel((x, y), rope)
     stripes = [rgb("#8cc25a"), rgb("#ffe07a"), rgb("#f08aae")]
     for x in range(3, 11):
         sag = round(2.5 * math.sin(math.pi * (x - 2) / 9))
         for t in range(2):
             f.putpixel((x, 4 + sag + t), stripes[(x // 2) % 3] + (255,))
-    for x, y in ((8, 4), (9, 4), (8, 3), (9, 3)):
-        f.putpixel((x, y), rgb("#fff6e4") + (255,))
     return outlined(f)
+
+
+def hammock_wide():
+    """The sloth's hammock, 36x16 (two tiles plus a little): a striped sling sagging between two deck-rail posts,
+    tied with cream ropes, a leaf pillow at the left end. The posts sit at x 2-3 and 34-35, like the railing's."""
+    f = canvas(36, 16)
+    rope = rgb("#f3e2bc") + (255,)
+    knot = rgb("#c9a46a") + (255,)
+    for x in (2, 3, 34, 35):  # rope wrapped round the post tops
+        f.putpixel((x, 5), knot)
+    for x, y in ((4, 5), (5, 6), (6, 7), (31, 5), (30, 6), (29, 7)):
+        f.putpixel((x, y), rope)
+    stripes = ["#8cc25a", "#ffe07a", "#f08aae", "#fff6e4"]
+    for x in range(6, 30):
+        sag = round(4 * math.sin(math.pi * (x - 6) / 23))
+        col = rgb(stripes[(x // 3) % len(stripes)]) + (255,)
+        for t in range(3):
+            f.putpixel((x, 7 + sag + t), col)
+    # A small leaf pillow on the left end of the sling.
+    for x, y in ((8, 7), (9, 7), (10, 7), (8, 8), (9, 8), (10, 8), (11, 8), (9, 6), (10, 6)):
+        f.putpixel((x, y), rgb("#79b742") + (255,))
+    f.putpixel((9, 7), rgb("#b4d273") + (255,))
+    out = outlined(f)  # 38x18: crop the 1px margin back off (nothing touches the edges)
+    return out.crop((1, 1, 37, 17))
 
 
 def feather_garland():
-    """A cord swag hung with toucan feathers: black, white, orange, yellow and red."""
-    f = canvas(14, 10)
-    cord = rgb("#6b4a32") + (255,)
+    """A cream cord swag hung with bright toucan feathers (orange, yellow, red, white, sky blue): light and readable."""
+    f = canvas(14, 9)
+    cord = rgb("#f3e2bc") + (255,)
     sag = lambda x: round(2 * math.sin(math.pi * x / 13))
     for x in range(14):
         f.putpixel((x, sag(x)), cord)
-    feathers = ["#2a2622", "#f7d038", "#f08a24", "#fff6e4", "#d9443a"]
-    for i, x in enumerate((2, 5, 8, 11)):
-        col = rgb(feathers[i % len(feathers)]) + (255,)
-        tip = rgb(feathers[(i + 3) % len(feathers)]) + (255,)
-        top = sag(x) + 1
-        for y in range(top, top + 5):
-            f.putpixel((x, y), col)
-            if y < top + 4:
-                f.putpixel((x + 1, y), col)
-        f.putpixel((x, top + 5), tip)
+    # A close fringe of 2 px feathers (no gaps, so no dark outline lines between them), alternating lengths.
+    feathers = [("#f08a24", "#ffd25a"), ("#ffe07a", "#fff6e4"), ("#e8564a", "#ffb0a0"), ("#fff6e4", "#8cc0ee"),
+                ("#8cc0ee", "#fff6e4"), ("#ffd25a", "#f08a24")]
+    for i, x in enumerate(range(1, 13, 2)):
+        body, tip = (rgb(c) + (255,) for c in feathers[i])
+        length = (5, 3, 4)[i % 3]
+        for dx in (0, 1):
+            top = sag(x + dx) + 1
+            for y in range(top, top + length):
+                f.putpixel((x + dx, y), body)
+            f.putpixel((x + dx, top + length), tip)
     return outlined(f)
+
+
+# ---------------------------------------------------------------- round 11: hearts out of three, deck decor, aprons
+
+
+def heart_empty():
+    """An empty friendship slot: the friend heart's shape as a soft grey outline around a pale fill."""
+    full = sprite(HEART, FRIEND_HEART_PAL)
+    f = canvas(16, 16)
+    edge = rgb("#b3a79b") + (255,)
+    fill = rgb("#f3ebe0") + (255,)
+    inside = lambda x, y: 0 <= x < 16 and 0 <= y < 16 and full.getpixel((x, y))[3] > 0
+    for y in range(16):
+        for x in range(16):
+            if not inside(x, y):
+                continue
+            border = any(not inside(x + dx, y + dy) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))
+            f.putpixel((x, y), edge if border else fill)
+    return f
+
+
+BROMELIAD = [  # a bromeliad in a clay pot: spiky striped leaves, a red-pink heart in the middle
+    "....g..p..g.",
+    ".g..gGpPGg..",
+    "..gGlgPpgGg.",
+    "gGlgGpPpGglG",
+    ".gGlgGpgGlg.",
+    "..LgGgGgGL..",
+    ".zzzzzzzzzz.",
+    ".tTTTTTTTTt.",
+    "..ttzttttT..",
+    "..tttttttT..",
+    "...TTTTTT...",
+]
+BROMELIAD_PAL = {**LEAF, **CLAY, "p": "#ff8aa8", "P": "#e04f6e"}
+
+CANDLES = [  # three little candles floating on lily pads, flames lit
+    ".y.......y....",
+    ".w...y...w....",
+    "gwg..w..gwg...",
+    "GgGg.w.gGgGg..",
+    ".GG.gwg.GG....",
+    "...GgGgG......",
+    "....GGG.......",
+]
+CANDLES_PAL = {"y": "#ffd25a", "w": "#fff6e4", "g": "#8cc25a", "G": "#4f8a3a"}
+
+
+def bunting():
+    """48x16: a cord sagging from one lantern-post top to the other, little cloth flags in festive colours."""
+    f = canvas(48, 16)
+    cord = rgb("#6b4a32") + (255,)
+    sag = lambda x: 1 + round(4 * math.sin(math.pi * x / 47))
+    for x in range(48):
+        f.putpixel((x, sag(x)), cord)
+    colours = ["#e8564a", "#ffd25a", "#79b742", "#4d8fd1", "#f08aae", "#f08a24"]
+    for i, x0 in enumerate(range(5, 42, 5)):
+        col = rgb(colours[i % len(colours)]) + (255,)
+        for dx in range(4):
+            top = sag(x0 + dx) + 1
+            depth = 4 if dx in (1, 2) else 2  # a pointed flag
+            for y in range(top, top + depth):
+                f.putpixel((x0 + dx, y), col)
+    return f
+
+
+def lights_tile(colours):
+    """A string-light tile with the bulb in other colours: (light, mid, dark), like light_string's warm bulb."""
+    f = light_string(False)
+    for (x, y), c in (((7, 6), 2), ((8, 6), 2), ((7, 7), 0), ((8, 7), 0), ((7, 8), 0), ((8, 8), 1)):
+        f.putpixel((x, y), rgb(colours[c]) + (255,))
+    return f
+
+
+# String-light colours you can buy (lit bulbs): rainbow is one colour per tile (three tiles).
+LIGHTS_RAINBOW = [("#ffd0d6", "#ff8aa0", "#e0566e"), ("#d8f5c8", "#8cd46a", "#4f9a3a"), ("#d6ecff", "#8cc0ee", "#4d8fd1")]
+LIGHTS_BLUE = ("#eaf4ff", "#a8d0ff", "#5a8ee0")
+
+# Chef aprons: the red bib swapped for another colour (r: the bib).
+APRONS = {"leaf": "#79b742", "sky": "#5aa0e0", "sun": "#f3c43a"}
 
 
 # ---------------------------------------------------------------- build
@@ -2848,6 +2948,22 @@ def build(preview_dir=None):
     add("gift_lilylamp", sprite(LILY_LAMP, LILY_LAMP_PAL))
     add("gift_lobeira", sprite(LOBEIRA, LOBEIRA_PAL, align="bottom"))
 
+    # ---- round 11: empty heart slots, the wider hammock, deck decor, string-light colours, chef aprons
+    add("heart_empty", heart_empty())
+    add_big("hammock_wide", place(hammock_wide(), 48, 16, x=0))
+    add("bromeliad", sprite(BROMELIAD, BROMELIAD_PAL, align="bottom"))
+    add("candles", sprite(CANDLES, CANDLES_PAL))
+    add_big("bunting", bunting())
+    for i, colours in enumerate(LIGHTS_RAINBOW):
+        add(f"lights_rainbow_{i}", lights_tile(colours))
+    add("lights_blue", lights_tile(LIGHTS_BLUE))
+    for apron, colour in APRONS.items():
+        pal = {**CHEF["pal"], "r": colour}
+        for d in ("down", "up", "side"):
+            body, feet = CHEF[d], CHEF["feet"][d]
+            add(f"chef_{d}_0_{apron}", sprite(body + [feet[0]], pal, align="bottom"))
+            add(f"chef_{d}_1_{apron}", sprite(bob(body, 3) + [feet[1]], pal, align="bottom"))
+
     names = list(frames)
     cols = 16
     rows_n = math.ceil(len(names) / cols)
@@ -2867,6 +2983,8 @@ def build(preview_dir=None):
     }
     for d in ("down", "up", "side"):
         anims[f"chef_{d}"] = [f"chef_{d}_0", f"chef_{d}_1"]
+        for apron in APRONS:
+            anims[f"chef_{d}_{apron}"] = [f"chef_{d}_0_{apron}", f"chef_{d}_1_{apron}"]
     for a in ANIMALS:
         anims[f"{a}_front"] = [f"{a}_front_0", f"{a}_front_1"]
         anims[f"{a}_side"] = [f"{a}_side_0", f"{a}_side_1"]

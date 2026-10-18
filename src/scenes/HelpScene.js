@@ -1,12 +1,12 @@
 // Pause/help overlay on top of the paused kitchen: controls and the recipes as picture cards (pão de queijo only
 // once the clay oven is built). N closes the kitchen early for the day, after a confirm card.
-import { RECIPES, INGREDIENTS, ASSEMBLIES, SPRITES, CUSTOMERS, FRIEND_HEARTS } from '../data.js';
+import { RECIPES, INGREDIENTS, ASSEMBLIES, SPRITES, CUSTOMERS } from '../data.js';
 import { t } from '../text.js';
 import { writeSave } from '../save.js';
 import { panel } from '../hud.js';
-import { INK, COLORS, artImage, portraitArt } from '../views.js';
+import { INK, COLORS, artImage, portraitArt, heartIcons } from '../views.js';
 
-const KEYS = [['WASD', 'move'], ['E', 'interact'], ['Esc', 'pause'], ['M', 'mute']];
+const KEYS = [['WASD', 'move'], ['E', 'interact'], ['C', 'catalog'], ['Esc', 'pause'], ['M', 'mute']];
 
 // Picture steps for a recipe, in the order you do them. A chopped ingredient shows "raw -> board -> chopped";
 // an assembly shows its parts (chopped first), then what they make: cheese -> board -> chopped + dough -> raw pastel.
@@ -58,7 +58,7 @@ export class HelpScene extends Phaser.Scene {
     // Cozycooked is a feature: sleepy dishes.
     const ry = 712;
     ['dish_brigadeiro_under', 'dish_baiao_under', 'dish_pastel_under'].forEach((art, i) => artImage(this, 276 + i * 70, ry + 22, art, 4));
-    ink(500, ry, t('help.rules'), { fontSize: '26px', wordWrap: { width: 1180 }, lineSpacing: 4 });
+    ink(500, ry, t('help.rules'), { fontSize: '26px', wordWrap: { width: 980 }, lineSpacing: 4 });
 
     // Controls as key caps.
     ink(240, 820, t('help.controls'), { fontSize: '34px', fontStyle: '600', color: COLORS.inkSoft });
@@ -75,7 +75,7 @@ export class HelpScene extends Phaser.Scene {
       const text = ink(x + w + 14, 888, label, { fontSize: '26px' }).setOrigin(0, 0.5);
       x += w + text.width + 60;
     }
-    this.friendsRow(kitchen.friends ?? {});
+    this.friendsRow(kitchen.friends ?? {}, recipes);
     // The footer: back, close up for today (not once closing time has started), back to the title.
     const canClose = !kitchen.closing;
     const parts = [t('help.back'), ...(canClose ? [t('help.close')] : []), t('help.quit')];
@@ -98,19 +98,19 @@ export class HelpScene extends Phaser.Scene {
     });
   }
 
-  // The regulars, right of the controls: each guest's portrait with their hearts underneath (empty ones pale).
-  friendsRow(friends) {
-    const ids = Object.keys(CUSTOMERS);
-    const step = 92;
-    const x0 = 1680 - (ids.length - 1) * step;
-    this.add.text(x0 - 40, 820, t('help.friends'), { ...INK, fontSize: '34px', fontStyle: '600', color: COLORS.inkSoft });
-    ids.forEach((id, i) => {
-      const x = x0 + i * step;
-      artImage(this, x, 880, portraitArt(id), 3);
-      for (let h = 0; h < FRIEND_HEARTS; h++) {
-        artImage(this, x + (h - 1) * 24, 924, 'heart_friend', 1.5).setAlpha(h < (friends[id] ?? 0) ? 1 : 0.3);
-      }
+  // The regulars, a column right of the recipes: each guest's portrait, their hearts (grey outlines still to earn)
+  // and their favourite dish (and the one they love, once this kitchen makes it), then how hearts work.
+  friendsRow(friends, recipes) {
+    const x = 1546;
+    this.add.text(x, 190, t('help.friends'), { ...INK, fontSize: '34px', fontStyle: '600', color: COLORS.inkSoft });
+    Object.keys(CUSTOMERS).forEach((id, i) => {
+      const y = 282 + i * 88;
+      artImage(this, x + 30, y - 4, portraitArt(id), 3.5);
+      heartIcons(this, x + 84, y + 4, friends[id] ?? 0, 1.75, 30);
+      const { favorite, loves } = CUSTOMERS[id];
+      [favorite, loves].filter((r) => r && recipes.includes(r)).forEach((r, j) => artImage(this, x + 212 + j * 58, y, RECIPES[r].art, 3));
     });
+    this.add.text(x, 712, t('help.friendsWhy'), { ...INK, fontSize: '22px', color: COLORS.inkSoft, wordWrap: { width: 330 }, lineSpacing: 2 });
   }
 
   // "Close the kitchen for today?" - a paper card in the middle of the page, over a dark dim.
@@ -158,7 +158,7 @@ export class HelpScene extends Phaser.Scene {
   recipeCard(id, recipe, x, y, h = 130) {
     const slim = h < 130;
     const g = this.add.graphics();
-    g.fillStyle(0xf6e6c4).fillRoundedRect(x, y, 1440, h, 16);
+    g.fillStyle(0xf6e6c4).fillRoundedRect(x, y, 1260, h, 16); // the regulars' column is on the right
     this.add.text(x + 24, y + (slim ? 10 : 16), recipe.name, { ...INK, fontSize: slim ? '30px' : '32px', fontStyle: '600' });
     this.add.text(x + 24, y + (slim ? 50 : 62), t(`help.${id}`), {
       ...INK, fontSize: slim ? '22px' : '24px', color: COLORS.inkSoft, wordWrap: { width: 380 },

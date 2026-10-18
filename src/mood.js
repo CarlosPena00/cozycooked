@@ -99,6 +99,22 @@ function bakeSunset(scene) {
   return key;
 }
 
+// A soft round glow in one colour (size x size), like glow.png but any colour: drawn once into a canvas texture.
+function tintedGlow(scene, color, size) {
+  const key = `glow_${color.toString(16)}_${size}`;
+  if (scene.textures.exists(key)) return key;
+  const tex = scene.textures.createCanvas(key, size, size);
+  const ctx = tex.getContext();
+  const [r, g, b] = [16, 8, 0].map((s) => (color >> s) & 255);
+  const c = size / 2;
+  const grad = ctx.createRadialGradient(c, c, 0, c, c, c);
+  for (let i = 0; i <= 8; i++) grad.addColorStop(i / 8, `rgba(${r},${g},${b},${(((1 - i / 8) ** 2) * 0.85).toFixed(3)})`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  tex.refresh();
+  return key;
+}
+
 export class Mood {
   constructor(scene) {
     this.scene = scene;
@@ -147,6 +163,16 @@ export class Mood {
     const size = Math.round(64 * scale);
     const glow = this.scene.add.image(x, y, stretched(this.scene, `glow${size}`, 'glow', size, size)).setDepth(DEPTH.glow).setAlpha(0).setBlendMode(Phaser.BlendModes.ADD);
     this.glows.push(glow);
+    return glow;
+  }
+
+  // A small lamp on the deck (a gift or decor that glows): its glow joins the lanterns', and lights up at once
+  // when it arrives after dusk.
+  addLamp(x, y) {
+    const glow = this.addGlow(x, y, S * 0.6);
+    glow.peak = 0.3; // softer than a lantern (it often stands right under one)
+    if (this.lit) this.scene.tweens.add({ targets: glow, alpha: glow.peak, duration: 1500 });
+    return glow;
   }
 
   // A string of bulbs between the first two lantern heads (one bulb per tile, the wire hangs from the tile edges).
@@ -156,11 +182,24 @@ export class Mood {
     const x0 = tileCenter(a.tx) + 5 * S;
     const tiles = Math.round((tileCenter(b.tx) - tileCenter(a.tx)) / TILE);
     const y = (a.ty + 1) * TILE - 16 * S;
+    this.bulbFrames = ['lights']; // lit frames, one per bulb round and round (setLights)
+    this.bulbGlows = [];
     return Array.from({ length: tiles }, (_, i) => {
       const x = x0 + (i + 0.5) * TILE;
-      this.addGlow(x, y + 8 * S, S * 0.5);
+      this.bulbGlows.push(this.addGlow(x, y + 8 * S, S * 0.5));
       return artImage(this.scene, x, y, 'lights_off').setOrigin(0.5, 0).setDepth(DEPTH.lantern);
     });
+  }
+
+  // String-light colours from the deck catalog: def = { frames, glow: [0xRRGGBB] } or null for the warm bulbs.
+  // Coloured glows are radial gradients drawn into canvas textures (tint is WebGL-only).
+  setLights(def) {
+    this.bulbFrames = def?.frames ?? ['lights'];
+    this.bulbGlows.forEach((glow, i) => {
+      const color = def?.glow[i % def.glow.length];
+      glow.setTexture(color ? tintedGlow(this.scene, color, glow.width) : `glow${glow.width}`);
+    });
+    if (this.lit) this.lights.forEach((l, i) => l.setFrame(artFrame(this.bulbFrames[i % this.bulbFrames.length])));
   }
 
   // Fireflies drift slowly over the water and the deck edges at night, blinking.
@@ -216,8 +255,8 @@ export class Mood {
     if (this.lit) return;
     this.lit = true;
     for (const l of this.lanterns) l.setFrame(l.texture.key === 'lanternPost' ? 0 : artFrame('lantern'));
-    for (const l of this.lights) l.setFrame(artFrame('lights'));
-    this.glows.forEach((glow, i) => this.scene.tweens.add({ targets: glow, alpha: 0.5, duration: 1500, delay: i * 120 }));
+    this.lights.forEach((l, i) => l.setFrame(artFrame(this.bulbFrames[i % this.bulbFrames.length])));
+    this.glows.forEach((glow, i) => this.scene.tweens.add({ targets: glow, alpha: glow.peak ?? 0.5, duration: 1500, delay: i * 120 }));
   }
 
   update(t, time) {
@@ -255,7 +294,7 @@ export class Mood {
     if (!this.lit) return;
     // A slow, gentle flicker.
     this.glows.forEach((glow, i) => {
-      if (!this.scene.tweens.isTweening(glow)) glow.setAlpha(0.46 + 0.05 * Math.sin(time / 400 + i * 1.7));
+      if (!this.scene.tweens.isTweening(glow)) glow.setAlpha(((glow.peak ?? 0.5) - 0.04) + 0.05 * Math.sin(time / 400 + i * 1.7));
     });
   }
 }

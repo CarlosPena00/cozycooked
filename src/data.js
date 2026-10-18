@@ -46,7 +46,7 @@ export const DECOR = [
   { name: 'lily_flower', tx: 2, ty: 8, dx: 4, dy: 2 },
   { name: 'reeds', tx: 1, ty: 6, dx: 2 },
   { name: 'tuft', tx: 0, ty: 9, dx: 2 },
-  { name: 'lily_flower', tx: 15, ty: 10, dx: 6 },
+  { name: 'lily_flower', tx: 16, ty: 10, dx: 4 }, // clear of the little boat (DECK_DECOR)
   { name: 'reeds', tx: 18, ty: 9, dx: 6 },
   { name: 'rock', tx: 18, ty: 3, dx: 4, dy: 4 },
   { name: 'lily', tx: 17, ty: 3, dy: 6 },
@@ -86,10 +86,12 @@ export const STATIONS = {
 export const UPGRADES = {
   board: { type: 'board', price: 15, art: 'counter_board', name: 'Second cutting board', text: 'Chop two cheeses at once.' },
   pot: { type: 'pot', price: 25, art: 'pot_stove', name: 'Third pot', text: 'Three dishes bubbling at once.' },
-  oven: { type: 'oven', price: 35, art: 'oven', name: 'Clay oven', text: 'Bakes pão de queijo -\na new dish!', dish: 'dish_paodequeijo' },
+  oven: { type: 'oven', price: 35, art: 'oven', name: 'Clay oven', text: 'A new dish: pão de queijo!', dish: 'dish_paodequeijo' },
 };
-// The diary suggests the cupboards once the chef has this many coins (and a cupboard is still unbuilt).
+// The diary suggests the cupboards once the chef has this many coins (and nothing was built yet), and the deck
+// catalog once the chef has DECOR_TIP_COINS (and nothing from it was bought yet).
 export const UPGRADE_TIP_COINS = 15;
+export const DECOR_TIP_COINS = 25;
 
 // "q" is for queijo, to keep "c" for chocolate.
 export const CRATES = { m: 'milk', c: 'chocolate', r: 'rice', b: 'beans', q: 'cheese', d: 'dough' };
@@ -165,15 +167,32 @@ export const LANTERNS = {
   walls: [{ tx: 5, ty: 3 }, { tx: 12, ty: 3 }, { tx: 5, ty: 8 }, { tx: 12, ty: 8 }],
 };
 
-// Regulars: a favorite dish served just right earns a heart (up to FRIEND_HEARTS, never lost). A guest with all the
-// hearts leaves a gift on their next visit: a piece of deck decor, drawn on its own spot (tile + offset in art px).
+// Regulars: a favorite dish served just right earns a heart (at most one per species a day, up to FRIEND_HEARTS,
+// never lost). A guest with all the hearts leaves a gift on their next visit: a piece of deck decor, drawn on its own
+// spot (bottom centre on the tile's bottom edge, plus an offset in art px; `cols`: art several tiles wide, frames
+// <art>_0, <art>_1...). `lamp`: it glows at night.
 export const FRIEND_HEARTS = 3;
 export const GIFTS = {
-  capybara: { art: 'gift_lantern', name: 'a lily lantern', tx: 14, ty: 4, dy: -3 },
+  capybara: { art: 'gift_lantern', name: 'a lily lantern', tx: 14, ty: 4, dy: -3, lamp: true },
   toucan: { art: 'gift_garland', name: 'a feather garland', tx: 15, ty: 4, dy: 0 }, // hangs from the string lights
-  sloth: { art: 'gift_hammock', name: 'a hammock', tx: 15, ty: 8, dy: -2 },
-  wolf: { art: 'gift_lobeira', name: 'a basket of wolf apples', tx: 14, ty: 8, dy: -3 },
-  toad: { art: 'gift_lilylamp', name: 'a lily pad lamp', tx: 17, ty: 9, dx: 2 },
+  sloth: { art: 'hammock_wide', cols: 3, name: 'a hammock', tx: 15, ty: 8, dx: 12, dy: 0 }, // slung between two rail posts
+  wolf: { art: 'gift_lobeira', name: 'a basket of wolf apples', tx: 13, ty: 8, dx: 4, dy: -3 },
+  toad: { art: 'gift_lilylamp', name: 'a lily pad lamp', tx: 17, ty: 4, dx: 6, lamp: true }, // open water, lily pad to rock
+};
+
+// The deck catalog (C in the kitchen): cosmetic only, bought with coins from play. `kind`: 'place' stands on its own
+// fixed spot (like GIFTS: clear of the guests' rows, their order bubbles, the HUD and the gifts), 'lights' recolours
+// the string lights, 'apron' the chef's apron (one of each kind in use; owned ones can be swapped back and forth).
+export const DECK_DECOR = {
+  bromeliad: { kind: 'place', price: 25, art: 'bromeliad', tx: 14, ty: 8, dx: -1, dy: -2, name: 'Bromeliad', text: 'A spiky friend for the railing.' },
+  candles: { kind: 'place', price: 40, art: 'candles', tx: 19, ty: 4, dx: -6, dy: -2, lamp: true, name: 'Floating candles', text: 'Little lights on lily pads.' },
+  bunting: { kind: 'place', price: 45, art: 'bunting', cols: 3, tx: 14, ty: 3, dx: 4, dy: 2, name: 'Bunting', text: 'Flags from post to post.' },
+  boat: { kind: 'place', price: 80, art: 'boat', cols: 3, tx: 14, ty: 9, dx: 4, dy: 13, name: 'Little boat', text: 'Tied up by the deck, for lazy days.' },
+  rainbow: { kind: 'lights', price: 30, frames: ['lights_rainbow_0', 'lights_rainbow_1', 'lights_rainbow_2'], glow: [0xff8aa0, 0x8cd46a, 0x8cc0ee], name: 'Rainbow lights', text: 'A string of happy colours.' },
+  moonlight: { kind: 'lights', price: 30, frames: ['lights_blue'], glow: [0x9cc8ff], name: 'Moonlight bulbs', text: 'Cool blue, like the lake.' },
+  leaf: { kind: 'apron', price: 20, name: 'Leaf apron', text: 'Green as the reeds.' },
+  sky: { kind: 'apron', price: 20, name: 'Sky apron', text: 'Blue as a clear morning.' },
+  sun: { kind: 'apron', price: 20, name: 'Sunflower apron', text: 'Yellow as a ripe mango.' },
 };
 
 // Day timings are written on a 300 s clock and scaled by DAY_SCALE, the one knob for the length of a day (0.8: 240 s).
@@ -275,7 +294,7 @@ export const STRINGS = {
   },
   hud: {
     next: 'Next: {text}',
-    controls: 'WASD move  ·  E use  ·  Esc help  ·  M sound',
+    controls: 'WASD move  ·  E use  ·  C catalog  ·  Esc help  ·  M sound',
     holding: 'Holding: {item}',
     emptyHands: 'Hands free',
     wants: '{customer} wants',
@@ -377,8 +396,10 @@ export const STRINGS = {
     interact: 'Use: E / Space',
     pause: 'Help / pause: Esc / P / H',
     mute: 'Sound: M',
+    catalog: 'Deck catalog: C',
     recipes: 'Recipes',
     friends: 'Regulars',
+    friendsWhy: 'Favourite dish, just right: a heart (one a day). Three hearts: a gift.',
     brigadeiro: 'Milk + chocolate in a POT, then plate it with E.',
     baiao: 'Rice + beans + chopped cheese in a POT, then plate it with E.',
     pastel: 'Chop cheese, put dough on it, FRY it, then plate it with E.',
@@ -401,9 +422,23 @@ export const STRINGS = {
     keys: 'A / D: choose  ·  E: buy  ·  Esc: close',
     confirm: 'Build it here for {price} coins?  E: yes  ·  Esc: no',
     built: 'Built!',
+    // The deck catalog (C): cosmetic decor, aprons and string-light colours.
+    deckTitle: 'Deck catalog',
+    deckSubtitle: 'Little things for the deck and the chef. Just for fun.',
+    deckKeys: 'WASD: choose  ·  E: buy  ·  Esc: close',
+    owned: 'On the deck',
+    inUse: 'In use',
+    stored: 'Yours',
+    buy: 'Buy the {name} for {price} coins?  E: yes  ·  Esc: no',
+    use: 'Use the {name}?  E: yes  ·  Esc: no',
+    putAway: 'Put the {name} away?  E: yes  ·  Esc: no',
+    bought: '{name} - lovely!',
   },
   friends: {
     gift: 'A gift from the {customer}: {gift}!',
+    brought: 'I brought you something!',
+    heart: 'The {customer} likes you more!',
+    full: 'The {customer} loves your cooking!',
   },
   diary: {
     title: 'Diary - Day {day}',
@@ -421,6 +456,8 @@ export const STRINGS = {
     next: 'Press any key to open day {day}',
     early: 'Closed up early. The lake did not mind.',
     tip: 'Tip: the old cupboards can become more kitchen. Press E on one.',
+    decorTip: 'Tip: press C for the deck catalog - lights, plants, a little boat.',
+    gift: 'The {customer} left {gift} on the deck.',
     // A line can name a guest (only used on days that guest came) or need everyone served.
     closing: [
       'The lake is quiet. The pots are clean. Good day.',
