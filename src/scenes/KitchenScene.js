@@ -5,9 +5,11 @@
 //   plate (station)   assemble (station)   stack (station)   bin (station)   serve (customer, mood)   coinDrop (coin)
 //   coinLand (coin)   coinPick (coin)   phase (phaseId)   lanternsOn ()   customer (event, customer, extra)
 //   nope (station): E did nothing   build (station): an old cupboard became something new
+//   heart (customer, hearts): a regular likes the chef a little more   gift (id): a regular left a gift on the deck
 import {
   TILE, ART_SCALE, SPEED, CHOPS_NEEDED, COIN_PICK_RADIUS, PLAYER_START, INGREDIENTS, COOKERS, COOK_LOOPS, COOK_GRACE,
-  CRATES, DAY, DECK, KITCHEN, MAP, NEXT_FOR_INGREDIENT, RECIPES, ASSEMBLIES, GUIDE_DISHES, UPGRADES, availableRecipes,
+  CRATES, CUSTOMERS, DAY, DECK, KITCHEN, MAP, NEXT_FOR_INGREDIENT, RECIPES, ASSEMBLIES, GUIDE_DISHES, UPGRADES, COIN_LADDER,
+  FRIEND_HEARTS, GIFTS, availableRecipes,
 } from '../data.js';
 import { resolve, cook, isCooker, ingredientKey, cookerStatus, waitingFor } from '../stations.js';
 import { Day } from '../day.js';
@@ -19,7 +21,7 @@ import { audio } from '../audio.js';
 import { loadSave, writeSave } from '../save.js';
 import { t, itemName, dishName, stationName, keyName } from '../text.js';
 import {
-  ART, DEPTH, tileCenter, artFrame, itemArt, fx, wiggle, StationView, CustomerView, ChefView, GuideArrow,
+  ART, DEPTH, tileCenter, artFrame, itemArt, fx, wiggle, StationView, CustomerView, ChefView, GuideArrow, giftImage,
 } from '../views.js';
 
 // Which extra event each action emits (besides `interact`).
@@ -55,6 +57,7 @@ export class KitchenScene extends Phaser.Scene {
     this.wallet = loadSave().coins; // total coins, shown in the HUD
     this.dishesServed = loadSave().dishesServed; // ever, for the guide arrow
     this.coinsToday = 0;
+    this.spentToday = 0; // coins spent in the catalog today (the diary says so)
     this.held = null;
     this.target = null;
     this.coins = [];
@@ -64,8 +67,12 @@ export class KitchenScene extends Phaser.Scene {
     this.chopAgainAt = 0;
     this.closeTimer = 0;
     this.lanternsLit = false;
+    this.ladder = { step: -1, at: -Infinity }; // the coin chime's place on its scale, and when it last rang
 
     this.upgrades = loadSave().upgrades; // { "tx,ty": upgrade id } built on the old cupboards
+    this.friends = loadSave().friends; // { species: hearts }
+    this.gifts = loadSave().gifts; // species whose gift stands on the deck
+    this.giftViews = new Map(this.gifts.map((id) => [id, giftImage(this, id)]));
     const { ground, walls, stations } = buildKitchen(this, this.upgrades);
     this.ground = ground;
     this.walls = walls;
@@ -146,15 +153,18 @@ export class KitchenScene extends Phaser.Scene {
     this.stations.set(key, station);
     this.stationViews.set(station, new StationView(this, station));
     this.wallet -= UPGRADES[id].price;
+    this.spentToday += UPGRADES[id].price;
     this.upgrades = { ...this.upgrades, [key]: id };
     writeSave({ coins: this.wallet, upgrades: this.upgrades });
     this.customers.recipes = this.recipes();
+    // A celebration: the next new guest orders the dish the new furniture makes.
+    if (station.type === 'oven') this.customers.firstOrder = 'paodequeijo';
     this.target = null;
     const [x, y] = [tileCenter(spot.tx), tileCenter(spot.ty)];
     [[0, 0], [-TILE * 0.35, -TILE * 0.2], [TILE * 0.35, -TILE * 0.1]].forEach(([dx, dy], i) => {
       this.time.delayedCall(i * 180, () => fx.sparkle(this, x + dx, y + dy));
     });
-    fx.text(this, x, y - TILE * 0.6, t('catalog.built'));
+    fx.text(this, x, y - TILE * 0.6 - 30, t('catalog.built'));
     this.events.emit('build', station);
     return station;
   }
@@ -209,7 +219,10 @@ export class KitchenScene extends Phaser.Scene {
       fryerDone: (st) => fx.sparkle(this, ...at(st)),
       bin: (st) => fx.float(this, at(st)[0], at(st)[1] - TILE * 0.3, 'steam_0', { rise: TILE * 0.6, duration: 700 }),
       coinLand: (coin) => this.tweens.add({ targets: coin, y: coin.y - TILE * 0.22, duration: 140, yoyo: true, repeat: 1, ease: 'Quad.easeOut' }),
-      coinPick: (coin) => fx.float(this, coin.x, coin.y - TILE * 0.15, 'coin_0', { rise: TILE * 0.8, duration: 500 }),
+      coinPick: (coin) => {
+        fx.float(this, coin.x, coin.y - TILE * 0.15, 'coin_0', { rise: TILE * 0.8, duration: 500 });
+        this.chime();
+      },
     };
     for (const [event, fn] of Object.entries(handlers)) this.events.on(event, fn);
     this.events.once('shutdown', () => {
@@ -218,13 +231,25 @@ export class KitchenScene extends Phaser.Scene {
     });
   }
 
+  // A picked coin rings one step higher than the one just before it (within COIN_LADDER.gapMs), else from the bottom.
+  chime() {
+    const { steps, gapMs, sound, volume } = COIN_LADDER;
+    const now = this.time.now;
+    this.ladder.step = now - this.ladder.at <= gapMs ? Math.min(this.ladder.step + 1, steps.length - 1) : 0;
+    this.ladder.at = now;
+    audio.play(sound, { volume, rate: 2 ** (steps[this.ladder.step] / 12) });
+  }
+
   // Design hook: replace to draw customers differently.
   createCustomerView(customer) {
     return new CustomerView(this, customer);
   }
 
   onCustomer(event, c, extra = {}) {
-    if (event === 'arrive') c.view = this.createCustomerView(c);
+    if (event === 'arrive') {
+      c.view = this.createCustomerView(c);
+      c.hearts = this.friends[c.id] ?? 0; // a guest who arrives with every heart brings a gift
+    }
     if (extra.line && event !== 'served') c.view.say(extra.line, event === 'idle' ? DECK.idleSeconds : DECK.reactSeconds);
     if (event === 'gone') c.view.destroy();
     this.events.emit('customer', event, c, extra);
@@ -270,16 +295,18 @@ export class KitchenScene extends Phaser.Scene {
     if (settled || this.closeTimer >= DAY.closingMaxSeconds) this.endDay();
   }
 
-  // Night: no more serving, everyone says goodbye, leftover coins fly to the chef.
+  // Night: no more serving, everyone says goodbye, leftover coins fly to the chef one after another (their chimes
+  // climb the scale), and the last one lands with a deeper clunk.
   startClosing() {
     this.closing = true;
     this.customers.close();
-    for (const coin of this.coins) {
+    let flying = this.coins.length;
+    this.coins.forEach((coin, i) => {
       coin.ready = false;
       coin.tween?.stop();
       const from = { x: coin.x, y: coin.y };
       coin.tween = this.tweens.addCounter({
-        from: 0, to: 1, duration: 600, ease: 'Quad.easeIn',
+        from: 0, to: 1, duration: 600, delay: Math.min(i * 110, 1600), ease: 'Quad.easeIn',
         onUpdate: (tw) => {
           const p = tw.getValue();
           coin.setPosition(lerp(from.x, this.player.x, p), lerp(from.y, this.player.y, p));
@@ -287,9 +314,11 @@ export class KitchenScene extends Phaser.Scene {
         onComplete: () => {
           coin.tween = null;
           this.pickCoin(coin);
+          flying -= 1;
+          if (!flying) this.time.delayedCall(140, () => audio.play(COIN_LADDER.sound, { volume: COIN_LADDER.volume + 0.1, rate: COIN_LADDER.clunkRate }));
         },
       });
-    }
+    });
   }
 
   endDay() {
@@ -298,10 +327,13 @@ export class KitchenScene extends Phaser.Scene {
     for (const coin of [...this.coins]) this.pickCoin(coin);
     const summary = {
       day: this.dayNumber,
-      guests: this.customers.log.map((c) => ({ id: c.id, recipe: c.recipe, mood: c.mood, dish: c.dish, line: c.line })),
+      guests: this.customers.log.map((c) => ({ id: c.id, recipe: c.recipe, mood: c.mood, dish: c.dish, line: c.line, heart: !!c.heart })),
       coinsToday: this.coinsToday,
       coinsTotal: this.wallet,
+      spent: this.spentToday,
       early: this.closedEarly,
+      // Yesterday's guests who had not come yet (closed early, or a busy deck): they still come back tomorrow.
+      expected: this.dayNumber > 1 ? this.customers.pending.map(({ id, recipe }) => ({ id, recipe })) : [],
     };
     this.cameras.main.fadeOut(600, 0, 0, 0);
     this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('diary', summary));
@@ -416,6 +448,7 @@ export class KitchenScene extends Phaser.Scene {
     result.customer.view.say(result.line, DECK.reactSeconds);
     this.events.emit('serve', result.customer, result.mood);
     this.dropCoins(result.customer, result.coins, window.ty);
+    this.befriend(result.customer, result.favorite);
     this.dishesServed += 1;
     writeSave({ dishesServed: this.dishesServed });
     // The chef knows the way now: the arrow fades out for good.
@@ -423,6 +456,36 @@ export class KitchenScene extends Phaser.Scene {
       this.guide.fadeOut();
       this.guide = null;
     }
+  }
+
+  // Regulars: their favorite just right earns a heart (never lost); a guest who came with every heart leaves a gift.
+  befriend(c, favorite) {
+    const hearts = this.friends[c.id] ?? 0;
+    if (favorite && hearts < FRIEND_HEARTS) {
+      this.friends = { ...this.friends, [c.id]: hearts + 1 };
+      c.heart = true; // the diary puts a heart sticker on this line
+      writeSave({ friends: this.friends });
+      c.view.showHearts(c, hearts + 1);
+      this.events.emit('heart', c, hearts + 1);
+    }
+    if (c.hearts >= FRIEND_HEARTS && !this.gifts.includes(c.id)) this.receiveGift(c.id);
+  }
+
+  // A regular's gift appears on its deck spot, for good.
+  receiveGift(id) {
+    this.gifts = [...this.gifts, id];
+    writeSave({ gifts: this.gifts });
+    const img = giftImage(this, id);
+    this.giftViews.set(id, img);
+    const scale = img.scale;
+    img.setScale(scale * 0.4);
+    this.tweens.add({ targets: img, scale, duration: 420, delay: 600, ease: 'Back.easeOut', easeParams: [3] });
+    this.time.delayedCall(600, () => {
+      fx.sparkle(this, img.x, img.y - img.displayHeight / 2);
+      const label = fx.text(this, img.x, img.y - img.displayHeight - 8, t('friends.gift', { customer: CUSTOMERS[id].name.toLowerCase(), gift: GIFTS[id].name }));
+      label.x = Phaser.Math.Clamp(label.x, label.width / 2 + 20, this.scale.width - label.width / 2 - 20); // on screen
+    });
+    this.events.emit('gift', id);
   }
 
   // A spinning coin.
@@ -502,7 +565,11 @@ export class KitchenScene extends Phaser.Scene {
     if (this.boardWork()) return t('next.finishChop');
     // Coins wait patiently on the floor: they never hide what a waiting guest needs.
     if (this.coins.length && !orders.length) return t('next.coins');
-    if (cooking) return t(this.customers.coming || this.openRecipes().length ? 'next.cooking' : 'next.cookingLate');
+    if (cooking) {
+      // The oven bakes, the pots and the fryer bubble.
+      const word = cooking.type === 'oven' ? 'baking' : 'cooking';
+      return t(`next.${word}${this.customers.coming || this.openRecipes().length ? '' : 'Late'}`);
+    }
     if (blocked) return t(blocked.progress >= 1 ? 'next.readyFree' : 'next.freePot', { station: upper(blocked) });
     if (orders.length) return t(`hint.${orders[0].recipe}`);
     // Something nobody ordered waits in a cooker: only a light nudge (it can wait, or become a mystery stew).
@@ -511,7 +578,7 @@ export class KitchenScene extends Phaser.Scene {
   }
 
   // Cookers that matter for the next step: the first finished one (only food somebody ordered while guests wait),
-  // the first waiting for the rest of a recipe somebody ordered, whether anything is cooking (food nobody ordered only
+  // the first waiting for the rest of a recipe somebody ordered, the first one cooking (food nobody ordered only
   // counts when it fills the last cooker the oldest order needs: it frees soon), the first other waiting
   // cooker (nobody ordered that), and `blocked`: a cooker to free (waiting, or done with food nobody ordered) when
   // every cooker the oldest order needs is taken.
@@ -528,7 +595,7 @@ export class KitchenScene extends Phaser.Scene {
     return {
       ready: done.find(ordered) ?? null,
       wanted: waiting.find(wanted) ?? null,
-      cooking: cookers.some((s) => s.progress < 1 && !waiting.includes(s) && (ordered(s) || (full && s.type === type))),
+      cooking: cookers.find((s) => s.progress < 1 && !waiting.includes(s) && (ordered(s) || (full && s.type === type))) ?? null,
       waiting: waiting.find((s) => !wanted(s)) ?? null,
       blocked: full ? [...waiting, ...done].find((s) => s.type === type) ?? null : null,
     };

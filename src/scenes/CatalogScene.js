@@ -57,14 +57,16 @@ export class CatalogScene extends Phaser.Scene {
     const { w, h, y } = CARD;
     const cx = x + w / 2;
     const frame = this.add.graphics();
-    const art = artImage(this, cx, y + 120, def.art, 6);
+    // Big enough to read the furniture; the oven shows the new dish it bakes beside it.
+    const art = artImage(this, def.dish ? cx - 44 : cx, y + 116, def.art, 8);
+    const dish = def.dish ? artImage(this, cx + 92, y + 150, def.dish, 5) : null;
     const name = this.add.text(cx, y + 230, def.name, { ...INK, fontSize: '34px', fontStyle: '600', align: 'center' }).setOrigin(0.5);
     const text = this.add.text(cx, y + 300, def.text, {
       ...INK, fontSize: '26px', color: COLORS.inkSoft, align: 'center', wordWrap: { width: w - 60 },
     }).setOrigin(0.5);
     const coin = this.add.image(0, y + 400, ART, artFrame('coin_hud')).setScale(3);
     const price = this.add.text(0, y + 400, '', { ...INK, fontSize: '32px', fontStyle: '600' }).setOrigin(0, 0.5);
-    return { id, def, x, frame, parts: [art, name, text, coin, price], coin, price, cx };
+    return { id, def, x, frame, parts: [art, dish, name, text, coin, price].filter(Boolean), coin, price, cx };
   }
 
   affordable(id) {

@@ -10,6 +10,7 @@ const CLOCK = { x: 1654, y: 16, w: 250, h: 112 };
 const BOTTOM = { x: 16, y: 970, w: 1236, h: 98 };
 const COINS = { x: 1664, y: 970, w: 240, h: 84 };
 const COIN_TICK_MS = 110;
+const POUCH_SCALE = 4;
 
 // Cream paper in lamplight: what the paper panels warm and dim to at night (no glare over the dark lake).
 const NIGHT_PAPER = 0xd8bf98;
@@ -58,7 +59,8 @@ export class Hud {
 
     add(panel(scene, COINS.x, COINS.y, COINS.w, COINS.h, 'wood'));
     const coinY = COINS.y + COINS.h / 2;
-    this.coinIcon = add(scene.add.sprite(COINS.x + 52, coinY, ART, artFrame('coin_0')).setScale(3).play('coin'));
+    // The coin pouch: it squashes a little with every coin counted in, and sparkles softly at every ten.
+    this.pouch = add(scene.add.image(COINS.x + 52, coinY - 2, ART, artFrame('pouch')).setScale(POUCH_SCALE));
     this.coinsText = add(scene.add.text(COINS.x + 92, coinY, '', { ...TEXT, fontSize: '38px', fontStyle: '600', color: COLORS.gold }).setOrigin(0, 0.5));
     this.coinsShown = null; // counts up one coin at a time towards the wallet
     this.coinTickAt = 0;
@@ -89,18 +91,37 @@ export class Hud {
     this.label.update(label);
   }
 
-  // The coin counter ticks up one by one (a small pop each), so a serve feels like a little payday.
+  // The coin counter ticks up one by one (the pouch squashes for each), so a serve feels like a little payday.
+  // Spending (a purchase) snaps straight down: no pops for coins going out.
   countCoins(coins) {
     const now = this.scene.time.now;
-    if (this.coinsShown === null) this.coinsShown = coins;
+    if (this.coinsShown === null || coins < this.coinsShown) this.coinsShown = coins;
     else if (coins !== this.coinsShown && now >= this.coinTickAt) {
-      this.coinsShown += Math.sign(coins - this.coinsShown);
+      this.coinsShown += 1;
       this.coinTickAt = now + COIN_TICK_MS;
-      pop(this.scene, this.coinIcon, 3);
+      this.squashPouch();
+      if (this.coinsShown % 10 === 0) this.sparklePouch();
       this.coinsText.setScale(1.3);
       this.scene.tweens.add({ targets: this.coinsText, scale: 1, duration: 200, ease: 'Quad.easeOut' });
     }
     this.coinsText.setText(String(this.coinsShown));
+  }
+
+  squashPouch() {
+    const { scene, pouch } = this;
+    scene.tweens.killTweensOf(pouch);
+    pouch.setScale(POUCH_SCALE);
+    scene.tweens.add({ targets: pouch, scaleX: POUCH_SCALE * 1.12, scaleY: POUCH_SCALE * 0.84, duration: 60, yoyo: true, ease: 'Quad.easeOut' });
+  }
+
+  // Two small sparkles over the pouch (on top of the HUD, unlike fx.sparkle).
+  sparklePouch() {
+    [[-18, -26, 3], [20, -12, 2]].forEach(([dx, dy, scale], i) => {
+      const s = this.scene.add.sprite(this.pouch.x + dx, this.pouch.y + dy, ART, artFrame('sparkle_0'))
+        .setScale(scale).setAlpha(0.85).setDepth(DEPTH.hud + 1);
+      s.playAfterDelay('sparkle', i * 140);
+      s.once('animationcomplete', () => s.destroy());
+    });
   }
 
   renderHeld(held) {

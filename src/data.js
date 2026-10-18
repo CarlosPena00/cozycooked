@@ -61,12 +61,15 @@ export const SOUNDS = Object.fromEntries(
 // Which sound each gameplay event plays (see the event list in KitchenScene): event -> [sound, volume, rate?].
 export const EVENT_SOUNDS = {
   interact: ['click', 0.35], nope: ['click', 0.22, 0.55], chop: ['chop', 0.45], cookerDone: ['pickup', 0.5], fryerDone: ['pickup', 0.5],
-  plate: ['plate', 0.5], serve: ['serve', 0.45], coinLand: ['coin', 0.3], coinPick: ['pickup', 0.35],
+  plate: ['plate', 0.5], serve: ['serve', 0.45], coinLand: ['coin', 0.3],
   cookerAdd: ['plop', 0.3], stack: ['plop', 0.3, 0.85], assemble: ['assemble', 0.35], bin: ['bin', 0.35], coinDrop: ['toss', 0.12],
-  build: ['assemble', 0.5],
+  build: ['assemble', 0.5], heart: ['pickup', 0.4, 1.5], gift: ['assemble', 0.5, 1.25],
 };
 // Soft loops while something cooks: cooker type -> [sound, volume]. The loop files are quiet (mean about -29 dBFS),
 // so near full volume they sit about 8 dB under the music (music mean -11 dBFS at MUSIC_VOLUME 0.3): audible, not loud.
+// Coins scooped up one right after another chime up a pentatonic scale (semitones, 6 steps; KitchenScene.chime),
+// starting over after a pause. The last coin flying in at closing time lands with one deeper clunk.
+export const COIN_LADDER = { steps: [0, 2, 4, 7, 9, 12], gapMs: 600, sound: 'coin', volume: 0.32, clunkRate: 0.6 };
 export const COOK_LOOPS = { pot: ['boil', 0.95], fryer: ['sizzle', 1] };
 // Cookers whose overlay flickers while cooking (fryer oil bubbles, embers behind the oven door): type -> art frame.
 export const FLICKER = { fryer: 'fryer_bubble', oven: 'oven_glow' };
@@ -78,11 +81,12 @@ export const STATIONS = {
 };
 
 // Furniture the old cupboards (U tiles) can become, bought with coins in the catalog. Each one once; there are three
-// cupboards, one for each upgrade. `type` is the station built there, `art` its picture in the catalog.
+// cupboards, one for each upgrade. `type` is the station built there, `art` its picture in the catalog (`dish`: the new
+// dish it makes, shown next to it).
 export const UPGRADES = {
   board: { type: 'board', price: 15, art: 'counter_board', name: 'Second cutting board', text: 'Chop two cheeses at once.' },
   pot: { type: 'pot', price: 25, art: 'pot_stove', name: 'Third pot', text: 'Three dishes bubbling at once.' },
-  oven: { type: 'oven', price: 35, art: 'oven', name: 'Clay oven', text: 'Bakes pão de queijo - a new dish!' },
+  oven: { type: 'oven', price: 35, art: 'oven', name: 'Clay oven', text: 'Bakes pão de queijo -\na new dish!', dish: 'dish_paodequeijo' },
 };
 // The diary suggests the cupboards once the chef has this many coins (and a cupboard is still unbuilt).
 export const UPGRADE_TIP_COINS = 15;
@@ -161,6 +165,17 @@ export const LANTERNS = {
   walls: [{ tx: 5, ty: 3 }, { tx: 12, ty: 3 }, { tx: 5, ty: 8 }, { tx: 12, ty: 8 }],
 };
 
+// Regulars: a favorite dish served just right earns a heart (up to FRIEND_HEARTS, never lost). A guest with all the
+// hearts leaves a gift on their next visit: a piece of deck decor, drawn on its own spot (tile + offset in art px).
+export const FRIEND_HEARTS = 3;
+export const GIFTS = {
+  capybara: { art: 'gift_lantern', name: 'a lily lantern', tx: 14, ty: 4, dy: -3 },
+  toucan: { art: 'gift_garland', name: 'a feather garland', tx: 15, ty: 4, dy: 0 }, // hangs from the string lights
+  sloth: { art: 'gift_hammock', name: 'a hammock', tx: 15, ty: 8, dy: -2 },
+  wolf: { art: 'gift_lobeira', name: 'a basket of wolf apples', tx: 14, ty: 8, dy: -3 },
+  toad: { art: 'gift_lilylamp', name: 'a lily pad lamp', tx: 17, ty: 9, dx: 2 },
+};
+
 // Day timings are written on a 300 s clock and scaled by DAY_SCALE, the one knob for the length of a day (0.8: 240 s).
 // Arrival gaps stay in real seconds, so a shorter day ends sooner instead of getting busier.
 export const DAY_SCALE = 0.8;
@@ -168,10 +183,11 @@ const clock = (s) => s * DAY_SCALE;
 const keys = (list) => list.map(([s, ...v]) => [clock(s), ...v]);
 
 // Customers. Art frames are `<id>_front_0/1` (waiting), `<id>_side_0/1` (walking), `<id>_happy`.
-// speed is in tiles/s; minTime is the day time (s) before they can show up.
+// speed is in tiles/s; minTime is the day time (s) before they can show up. `loves`: a dish they order even more
+// often than their favorite once the kitchen can make it (both earn the favorite bonus).
 export const CUSTOMERS = {
   capybara: {
-    name: 'Capybara', favorite: 'brigadeiro', speed: 1.5, minTime: 0,
+    name: 'Capybara', favorite: 'brigadeiro', loves: 'paodequeijo', speed: 1.5, minTime: 0,
     happy: ['Perfect. Like a warm bath.', "Mmm. I'll tell the birds.", 'Five stars. Well, five seeds.'],
     happyWith: { paodequeijo: 'Cheesy cloud bread. Life is good.' }, // a happy line for one dish
     cozycooked: ['Rustic. I love it.', 'A bit runny. Very relaxing.', 'Raw is a lifestyle.'],
@@ -340,6 +356,8 @@ export const STRINGS = {
     coins: 'Coins! Walk over them to scoop them up.',
     cooking: 'Bubbling away. Take it out anytime, or start the next order.',
     cookingLate: 'Bubbling away. Take it out anytime - nobody else is coming today.',
+    baking: 'Something smells lovely... Take it out anytime, or start the next order.',
+    bakingLate: 'Something smells lovely... Take it out anytime - nobody else is coming today.',
     missing: 'The {station} needs {items} for {dish}.',
     waiting: 'The {station} waits for more - or toss in anything for a mystery stew.',
     relax: 'Relax and enjoy the lake. Guests are on their way.',
@@ -360,6 +378,7 @@ export const STRINGS = {
     pause: 'Help / pause: Esc / P / H',
     mute: 'Sound: M',
     recipes: 'Recipes',
+    friends: 'Regulars',
     brigadeiro: 'Milk + chocolate in a POT, then plate it with E.',
     baiao: 'Rice + beans + chopped cheese in a POT, then plate it with E.',
     pastel: 'Chop cheese, put dough on it, FRY it, then plate it with E.',
@@ -383,6 +402,9 @@ export const STRINGS = {
     confirm: 'Build it here for {price} coins?  E: yes  ·  Esc: no',
     built: 'Built!',
   },
+  friends: {
+    gift: 'A gift from the {customer}: {gift}!',
+  },
   diary: {
     title: 'Diary - Day {day}',
     line: '{customer} had {dish}: {mood}.',
@@ -393,6 +415,7 @@ export const STRINGS = {
     more: '...and {n} more',
     coinsToday: 'Coins today: {n}',
     coinsTotal: 'Total coins: {n}',
+    spent: 'Spent: {n}', // only on days something was bought in the catalog
     served: 'Dishes served: {n}',
     rustic: 'Rustic dishes: {n}',
     next: 'Press any key to open day {day}',

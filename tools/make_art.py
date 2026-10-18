@@ -2443,8 +2443,8 @@ JAR = [
     ".ggggg.",
 ]
 JAR_PAL = {"l": "#c9a24a", "L": "#a07a34", "g": "#cfe3e0", "j": "#e8a04a", "k": "#7a4a2e"}
-COBWEB = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (0, 1), (0, 2), (0, 3), (0, 4),
-          (1, 1), (2, 2), (3, 3), (3, 1), (4, 1), (1, 3), (1, 4)]
+# A thin grey web in the corner: two edges, one spoke and a single cross thread.
+COBWEB = [(0, 0), (1, 0), (2, 0), (3, 0), (0, 1), (0, 2), (0, 3), (1, 1), (2, 2), (2, 1), (1, 2)]
 
 
 def cupboard_old():
@@ -2452,7 +2452,7 @@ def cupboard_old():
     f = on(f, grid(DOILY, DOILY_PAL), 2, 4)
     f = on(f, outlined(grid(JAR, JAR_PAL)), 7, 0)
     for x, y in COBWEB:
-        f.putpixel((x, y), rgb("#ece6da") + (220,))
+        f.putpixel((x, y), rgb("#a8a29a") + (150,))
     return f
 
 
@@ -2487,13 +2487,20 @@ def oven_tile():
 
 
 def oven_glow():
-    """Overlay: embers glowing through the door (the 'i' pixels of OVEN_DOME), brighter at the bottom."""
+    """Overlay: the fire behind the door (the 'i' pixels of OVEN_DOME), a gold core low in the middle; the iron
+    door frame ('n') warms to a dull red and a little light spills on the hearth stone under the door."""
     f = canvas(16, 16)
     for y, r in enumerate(OVEN_DOME):
         for x, ch in enumerate(r):
+            at = (x + 1 + OVEN_AT[0], y + 1 + OVEN_AT[1])
             if ch == "i":
-                col = "#ffd060" if y >= 6 and x in (6, 7) else "#f2823a" if y >= 5 else "#c9502a"
-                f.putpixel((x + 1 + OVEN_AT[0], y + 1 + OVEN_AT[1]), rgb(col) + (255,))
+                core = y >= 5 and x in (6, 7)
+                col = "#fff0a0" if core and y >= 6 else "#ffd060" if core or y >= 6 else "#f2823a" if y >= 5 else "#d9603a"
+                f.putpixel(at, rgb(col) + (255,))
+            elif ch == "n" and y < len(OVEN_DOME) - 1:
+                f.putpixel(at, rgb("#8a3a26") + (255,))
+            elif ch == "n":
+                f.putpixel(at, rgb("#e0884a") + (230,))
     return f
 
 
@@ -2534,6 +2541,116 @@ def price_tag():
         f.putpixel((8, y), rgb("#6b4a32") + (255,))
     f.alpha_composite(outlined(grid(TAG, TAG_PAL)), (3, 4))
     return f
+
+
+# ---------------------------------------------------------------- round 10: the coin pouch in the HUD
+
+POUCH = [
+    "....kk..kk....",
+    ".....kkkk.....",
+    "......bb......",
+    ".....BssB.....",
+    "....BbbbbB....",
+    "...BbbbbbbB...",
+    "..BbbbgGbbbB..",
+    ".BbbbgGhGbbbB.",
+    ".BbbbgGGGbbbB.",
+    ".BbbbbgGbbbdB.",
+    ".BbbbbbbbbddB.",
+    "..BdbbbbbddB..",
+    "...BBBBBBBB...",
+]
+POUCH_PAL = {"k": "#f0c860", "b": "#d9a066", "B": "#a8744a", "s": "#7a4e30", "d": "#bf8650",
+             "g": "#f7c948", "G": "#d89a2a", "h": "#fff6cc"}
+
+
+def pouch():
+    """A plump leather coin pouch tied with a gold cord, a coin stitched on its belly."""
+    return sprite(POUCH, POUCH_PAL, align="bottom")
+
+
+# ---------------------------------------------------------------- round 10: regulars' gifts for the deck
+
+FRIEND_HEART_PAL = {"r": "#ff7fa8", "R": "#d24f86", "h": "#fff3f8"}
+
+LILY_LANTERN = [
+    "......k......",
+    "......k......",
+    "....ppppp....",
+    "..pPPpypPPp..",
+    ".pPPyyhyyPPp.",
+    "pPPyyhhhyyPPp",
+    ".pPPyyyyyPPp.",
+    "..ppPPPPPpp..",
+    "...gGgggGg...",
+    "......w......",
+    "......w......",
+    "....wwWww....",
+]
+LILY_LANTERN_PAL = {"k": "#6b4a32", "p": "#ffc2d6", "P": "#f08aae", "y": "#ffe07a", "h": "#fffbe0",
+                    "g": "#7fae4f", "G": "#4f7a34", "w": "#c98a52", "W": "#9a6438"}
+
+LILY_LAMP = [
+    "......kk......",
+    ".....kyyk.....",
+    ".....yhhy.....",
+    ".....kyyk.....",
+    "..gggkkkkggg..",
+    ".gGggggggggGg.",
+    "gGggggggggggGg",
+    ".gGGGGG.GGGGg.",
+]
+LILY_LAMP_PAL = {"k": "#7a5a3a", "y": "#ffd060", "h": "#fff8d0", "g": "#8cc25a", "G": "#4f8a3a"}
+
+LOBEIRA = [
+    "....fFf.......",
+    "..fFhfFfFf....",
+    ".fFffFfhfFf...",
+    "bBbBbBbBbBbB..",
+    ".bBbBbBbBbB...",
+    "..bBbBbBbB....",
+]
+LOBEIRA_PAL = {"f": "#b8c84a", "F": "#7a9a3a", "h": "#eef4a8", "b": "#d9a066", "B": "#9a6438"}
+
+
+def hammock():
+    """A striped hammock slung between two posts, a little pillow at one end (the sloth's)."""
+    f = canvas(14, 12)
+    post = rgb("#9a6438") + (255,)
+    for y in range(1, 12):
+        f.putpixel((0, y), post)
+        f.putpixel((13, y), post)
+    rope = rgb("#e8d9b0") + (255,)
+    for x, y in ((1, 2), (2, 3), (12, 2), (11, 3)):
+        f.putpixel((x, y), rope)
+    stripes = [rgb("#8cc25a"), rgb("#ffe07a"), rgb("#f08aae")]
+    for x in range(3, 11):
+        sag = round(2.5 * math.sin(math.pi * (x - 2) / 9))
+        for t in range(2):
+            f.putpixel((x, 4 + sag + t), stripes[(x // 2) % 3] + (255,))
+    for x, y in ((8, 4), (9, 4), (8, 3), (9, 3)):
+        f.putpixel((x, y), rgb("#fff6e4") + (255,))
+    return outlined(f)
+
+
+def feather_garland():
+    """A cord swag hung with toucan feathers: black, white, orange, yellow and red."""
+    f = canvas(14, 10)
+    cord = rgb("#6b4a32") + (255,)
+    sag = lambda x: round(2 * math.sin(math.pi * x / 13))
+    for x in range(14):
+        f.putpixel((x, sag(x)), cord)
+    feathers = ["#2a2622", "#f7d038", "#f08a24", "#fff6e4", "#d9443a"]
+    for i, x in enumerate((2, 5, 8, 11)):
+        col = rgb(feathers[i % len(feathers)]) + (255,)
+        tip = rgb(feathers[(i + 3) % len(feathers)]) + (255,)
+        top = sag(x) + 1
+        for y in range(top, top + 5):
+            f.putpixel((x, y), col)
+            if y < top + 4:
+                f.putpixel((x + 1, y), col)
+        f.putpixel((x, top + 5), tip)
+    return outlined(f)
 
 
 # ---------------------------------------------------------------- build
@@ -2719,6 +2836,17 @@ def build(preview_dir=None):
     add("dish_paodequeijo", pao_de_queijo(PAO_PAL))
     add("dish_paodequeijo_under", pao_de_queijo(PAO_PALE, sleepy=True))
     add("price_tag", price_tag())
+
+    # ---- round 10: coin pouch (HUD)
+    add("pouch", pouch())
+
+    # ---- round 10: friendship hearts and the regulars' gifts
+    add("heart_friend", sprite(HEART, FRIEND_HEART_PAL))
+    add("gift_lantern", sprite(LILY_LANTERN, LILY_LANTERN_PAL, align="bottom"))
+    add("gift_hammock", frame(hammock(), align="bottom"))
+    add("gift_garland", frame(feather_garland(), align="bottom", dy=-4))  # hangs from the top edge
+    add("gift_lilylamp", sprite(LILY_LAMP, LILY_LAMP_PAL))
+    add("gift_lobeira", sprite(LOBEIRA, LOBEIRA_PAL, align="bottom"))
 
     names = list(frames)
     cols = 16

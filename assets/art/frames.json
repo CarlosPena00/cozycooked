@@ -169,7 +169,14 @@
   "oven_glow": 163,
   "dish_paodequeijo": 164,
   "dish_paodequeijo_under": 165,
-  "price_tag": 166
+  "price_tag": 166,
+  "pouch": 167,
+  "heart_friend": 168,
+  "gift_lantern": 169,
+  "gift_hammock": 170,
+  "gift_garland": 171,
+  "gift_lilylamp": 172,
+  "gift_lobeira": 173
  },
  "anims": {
   "coin": [

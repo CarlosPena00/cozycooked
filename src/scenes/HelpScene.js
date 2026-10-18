@@ -1,10 +1,10 @@
 // Pause/help overlay on top of the paused kitchen: controls and the recipes as picture cards (pão de queijo only
 // once the clay oven is built). N closes the kitchen early for the day, after a confirm card.
-import { RECIPES, INGREDIENTS, ASSEMBLIES, SPRITES } from '../data.js';
+import { RECIPES, INGREDIENTS, ASSEMBLIES, SPRITES, CUSTOMERS, FRIEND_HEARTS } from '../data.js';
 import { t } from '../text.js';
 import { writeSave } from '../save.js';
 import { panel } from '../hud.js';
-import { INK, COLORS, artImage } from '../views.js';
+import { INK, COLORS, artImage, portraitArt } from '../views.js';
 
 const KEYS = [['WASD', 'move'], ['E', 'interact'], ['Esc', 'pause'], ['M', 'mute']];
 
@@ -75,6 +75,7 @@ export class HelpScene extends Phaser.Scene {
       const text = ink(x + w + 14, 888, label, { fontSize: '26px' }).setOrigin(0, 0.5);
       x += w + text.width + 60;
     }
+    this.friendsRow(kitchen.friends ?? {});
     // The footer: back, close up for today (not once closing time has started), back to the title.
     const canClose = !kitchen.closing;
     const parts = [t('help.back'), ...(canClose ? [t('help.close')] : []), t('help.quit')];
@@ -97,13 +98,28 @@ export class HelpScene extends Phaser.Scene {
     });
   }
 
-  // "Close the kitchen for today?" - a paper card in the middle of the page, over a soft dim.
+  // The regulars, right of the controls: each guest's portrait with their hearts underneath (empty ones pale).
+  friendsRow(friends) {
+    const ids = Object.keys(CUSTOMERS);
+    const step = 92;
+    const x0 = 1680 - (ids.length - 1) * step;
+    this.add.text(x0 - 40, 820, t('help.friends'), { ...INK, fontSize: '34px', fontStyle: '600', color: COLORS.inkSoft });
+    ids.forEach((id, i) => {
+      const x = x0 + i * step;
+      artImage(this, x, 880, portraitArt(id), 3);
+      for (let h = 0; h < FRIEND_HEARTS; h++) {
+        artImage(this, x + (h - 1) * 24, 924, 'heart_friend', 1.5).setAlpha(h < (friends[id] ?? 0) ? 1 : 0.3);
+      }
+    });
+  }
+
+  // "Close the kitchen for today?" - a paper card in the middle of the page, over a dark dim.
   closeCard(cx) {
     const w = 1240;
     const h = 300;
     const y = 540 - h / 2;
     const card = this.add.container(0, 0).setVisible(false).setDepth(10);
-    card.add(this.add.rectangle(0, 0, 1920, 1080, 0x1b1210, 0.35).setOrigin(0));
+    card.add(this.add.rectangle(0, 0, 1920, 1080, 0x1b1210, 0.6).setOrigin(0)); // dark enough that the recipe rows behind stay quiet
     const g = this.add.graphics().fillStyle(COLORS.paper).fillRoundedRect(cx - w / 2, y, w, h, 18);
     card.add([g, panel(this, cx - w / 2, y, w, h)]);
     const ink = (ty, text, style) => this.add.text(cx, ty, text, { ...INK, align: 'center', ...style }).setOrigin(0.5);

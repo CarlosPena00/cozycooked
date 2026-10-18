@@ -1,6 +1,8 @@
 // How game state looks: items, stations, the chef, customers, small effects, text styles and draw order.
 // Almost everything is a frame of one self-made sheet, 'art' (assets/art/art.png, names in assets/art/frames.js).
-import { TILE, ART_SCALE, INGREDIENTS, RECIPES, MYSTERY, ASSEMBLIES, CHOPS_NEEDED, SPRITES, KITCHEN, DECK, FLICKER } from './data.js';
+import {
+  TILE, ART_SCALE, INGREDIENTS, RECIPES, MYSTERY, ASSEMBLIES, CHOPS_NEEDED, SPRITES, KITCHEN, DECK, FLICKER, GIFTS, FRIEND_HEARTS,
+} from './data.js';
 import { matchRecipe, isCooker, waitingFor } from './stations.js';
 import { ART_FRAMES } from '../assets/art/frames.js';
 
@@ -163,6 +165,22 @@ export const fx = {
   },
 };
 
+// A regular's gift on its deck spot (bottom centre on the tile's bottom edge, plus its offset in art px), behind guests.
+export function giftImage(scene, id) {
+  const { art, tx, ty, dx = 0, dy = 0 } = GIFTS[id];
+  return artImage(scene, tileCenter(tx) + px(dx), (ty + 1) * TILE + px(dy), art).setOrigin(0.5, 1).setDepth(DEPTH.lantern);
+}
+
+// A row of friendship hearts (filled up to n, the newest one pops), drifting up and fading.
+export function heartRow(scene, x, y, n, scale = 4) {
+  const step = 16 * scale * 0.75;
+  const hearts = Array.from({ length: FRIEND_HEARTS }, (_, i) => artImage(scene, x + (i - (FRIEND_HEARTS - 1) / 2) * step, y, 'heart_friend', scale)
+    .setAlpha(i < n ? 1 : 0.5).setDepth(DEPTH.fx));
+  pop(scene, hearts[n - 1], scale);
+  scene.tweens.add({ targets: hearts, y: y - px(4), alpha: 0, delay: 1600, duration: 700, onComplete: () => hearts.forEach((h) => h.destroy()) });
+  return hearts;
+}
+
 // Serve confetti colors, by recipe (and 'mystery').
 const CONFETTI = {
   brigadeiro: [0x6b3e26, 0xe07a8f, 0xffd77a, 0xfff1c4],
@@ -256,6 +274,11 @@ export class StationView {
     this.overlay = artImage(scene, x, y, 'potfill_broth').setDepth(DEPTH.stationItem).setVisible(false);
     // A stepped pixel halo that breathes around a finished cooker until the food is plated (never over the food).
     this.glow = pixelHalo(scene, x, y).setDepth(DEPTH.stationItem - 1).setVisible(false);
+    // The oven's fire: a soft warm halo on the counter and the floor in front while it bakes (stronger at night).
+    if (station.type === 'oven') {
+      this.fire = scene.add.image(x, y + px(4), stretched(scene, 'ovenFire', 'glow', px(40), px(32))).setDepth(DEPTH.glow)
+        .setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);
+    }
     this.icons = [];
     this.iconsKey = '';
     this.steam = scene.add.particles(x, y - px(4.5), ART, {
@@ -284,7 +307,7 @@ export class StationView {
   // Gone for good (an old cupboard that became something else).
   destroy() {
     const parts = [this.body, this.tag, this.item.image, this.under?.image, ...this.barBack, this.bar, this.overlay, this.glow,
-      this.steam, this.hearts, ...(this.icons ?? [])];
+      this.fire, this.chip, this.steam, this.hearts, ...(this.icons ?? [])];
     for (const o of parts) o?.destroy();
   }
 
@@ -322,10 +345,18 @@ export class StationView {
       this.overlay.setVisible(cooking);
       if (cooking) this.overlay.setFrame(ART_FRAMES[(recipe ? RECIPES[recipe].fill : null) ?? 'potfill_broth']);
     } else {
-      // Fryer oil bubbles at ~3 fps while frying; the oven's embers glow behind its door and flicker as fast.
+      // Fryer oil bubbles at ~3 fps while frying; the oven's fire glows behind its door and flickers as fast.
+      // At night an idle oven keeps a faint ember behind the door.
       const flick = Math.floor(time / 330) % 2 === 0;
       const oven = station.type === 'oven';
-      this.overlay.setVisible(busy && !ready && (oven || flick)).setAlpha(oven && !flick ? 0.65 : 1).setFrame(ART_FRAMES[FLICKER[station.type]]);
+      const baking = busy && !ready;
+      const ember = oven && !baking && dark > 0.3;
+      const alpha = ember ? 0.3 * dark : oven && !flick ? 0.65 : 1;
+      this.overlay.setVisible(baking ? oven || flick : ember).setAlpha(alpha).setFrame(ART_FRAMES[FLICKER[station.type]]);
+      if (this.fire) {
+        const flicker = 0.82 + 0.1 * Math.sin(time / 110) + 0.08 * Math.sin(time / 47);
+        this.fire.setAlpha(baking ? (0.3 + 0.35 * dark) * flicker : 0);
+      }
     }
     toggle(this.steam, cooking && !ready);
     toggle(this.hearts, ready);
@@ -340,10 +371,15 @@ export class StationView {
     if (key === this.iconsKey) return;
     this.iconsKey = key;
     for (const icon of this.icons) icon.destroy();
+    this.chip?.destroy();
+    this.chip = null;
     const dir = this.below ? 1 : -1; // away from the tile
-    const top = this.y + dir * (TILE / 2 + 20);
+    // Below the bottom wall the icons sit on a cream chip like the progress bar's, a little closer to the tile,
+    // so they never read as coins on the floor or hang over the water.
+    const top = this.below ? this.y + TILE / 2 + 24 : this.y - TILE / 2 - 20;
+    if (this.below && arts.length) this.chip = this.iconChip(arts.length, ready, top);
     if (ready) {
-      const icon = artImage(this.scene, this.x, top + dir * 34, arts[0], ICON_SCALE + 1).setDepth(DEPTH.stationInfo);
+      const icon = artImage(this.scene, this.x, top + dir * (this.below ? 32 : 34), arts[0], ICON_SCALE + 1).setDepth(DEPTH.stationInfo);
       icon.setScale(1);
       this.scene.tweens.add({ targets: icon, scale: ICON_SCALE + 1, duration: 420, ease: 'Back.easeOut', easeParams: [3] });
       this.icons = [icon];
@@ -364,6 +400,18 @@ export class StationView {
     });
   }
 }
+
+// The cream chip behind the icons under a bottom-wall station (dark outline, like the progress bar backing).
+StationView.prototype.iconChip = function iconChip(n, ready, top) {
+  const step = 16 * ICON_SCALE;
+  const w = ready ? 16 * (ICON_SCALE + 1) + 12 : Math.min(n, 4) * step + 8;
+  const h = ready ? 16 * (ICON_SCALE + 1) : step;
+  const cy = ready ? top + 32 : top + step / 2;
+  const g = this.scene.add.graphics().setDepth(DEPTH.stationInfo - 0.5);
+  g.fillStyle(0x3b2420).fillRoundedRect(this.x - w / 2 - 3, cy - h / 2 - 3, w + 6, h + 6, 12);
+  g.fillStyle(COLORS.paper).fillRoundedRect(this.x - w / 2, cy - h / 2, w, h, 10);
+  return g;
+};
 
 // A finished cooker's halo: rings of whole art pixels around the tile, rounded at the corners, fading outwards.
 const HALO = [[0xfff1b0, 0.95], [0xffd36b, 0.65], [0xffb84d, 0.3]]; // [color, alpha], from the tile edge out
@@ -518,6 +566,11 @@ export class CustomerView {
     else this.bubble.hide();
     // A spoken line is kept on screen while a guest walks out past the right edge.
     this.bubble.setPosition(Math.min(x + px(6.5), this.scene.scale.width - 30 - this.bubble.w), feet - px(13));
+  }
+
+  // A regular likes the chef a little more: hearts (n of FRIEND_HEARTS) over their head.
+  showHearts(c, n) {
+    heartRow(this.scene, c.x * TILE + TILE / 2, customerFeet(c.ty) - px(17), n, 3.5);
   }
 
   react(c, x, feet) {

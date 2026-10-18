@@ -26,11 +26,13 @@ export class DiaryScene extends Phaser.Scene {
     return typeof line === 'string' ? line : line.text;
   }
 
-  // summary: { day, guests: [{ id, recipe, mood, dish }], coinsToday, coinsTotal, early: closed up early }
+  // summary: { day, guests: [{ id, recipe, mood, dish }], coinsToday, coinsTotal, spent: coins spent today,
+  // early: closed up early, expected: returning guests who had not come yet }
   create(summary) {
-    const { day, guests, coinsToday, coinsTotal, early } = summary;
-    // Guests nobody served come back first tomorrow, with the same order (the diary promises it).
-    const returning = guests.filter((g) => !g.mood).map(({ id, recipe }) => ({ id, recipe }));
+    const { day, guests, coinsToday, coinsTotal, spent = 0, early, expected = [] } = summary;
+    // Guests nobody served come back first tomorrow, with the same order (the diary promises it), then the
+    // returning guests who never made it today.
+    const returning = [...guests.filter((g) => !g.mood).map(({ id, recipe }) => ({ id, recipe })), ...expected];
     // Once, when the chef can afford something and a cupboard is still old: a tip about the catalog.
     const save = loadSave();
     const tip = !save.upgradeTip && coinsTotal >= UPGRADE_TIP_COINS && SPOT_KEYS.some((key) => !save.upgrades[key]);
@@ -45,8 +47,11 @@ export class DiaryScene extends Phaser.Scene {
     this.add.text(PAGE.x + PAGE.w / 2, PAGE.y + 70, t('diary.title', { day }), { ...ink, fontSize: '64px', color: '#5a3a6a' }).setOrigin(0.5);
 
     // One line per visit: a species already on the page reads "Another cane toad ...", then "One more cane toad ...".
+    // The lines under the closing line take guest lines away, and so does "...and N more" on a busy day.
+    const slots = MAX_LINES - extra.length;
+    const shown = guests.length > slots ? slots - 1 : guests.length;
     const seen = new Map(); // species -> visits so far
-    const lines = guests.slice(0, MAX_LINES).map((g) => {
+    const lines = guests.slice(0, shown).map((g) => {
       const name = CUSTOMERS[g.id].name;
       const n = seen.get(g.id) ?? 0;
       const again = `diary.another.${(n - 1) % STRINGS.diary.another.length}`;
@@ -64,20 +69,23 @@ export class DiaryScene extends Phaser.Scene {
         artImage(this, left + label.width + 34, y - 4, dishArt(g.dish), 2.5);
         artImage(this, left + label.width + 78, y - 4, MOOD_ART[g.mood], 2);
       }
+      // A friendship heart earned on this visit: a pink sticker, slightly tilted.
+      if (g.heart) artImage(this, left + label.width + 122, y - 6, 'heart_friend', 2.5).setAngle(-12);
     });
-    if (guests.length > MAX_LINES) {
-      this.add.text(left, top + MAX_LINES * LINE, t('diary.more', { n: guests.length - MAX_LINES }), ink).setOrigin(0, 0.62);
+    if (guests.length > shown) {
+      this.add.text(left, top + shown * LINE, t('diary.more', { n: guests.length - shown }), ink).setOrigin(0, 0.62);
     }
 
     // Totals, written at the bottom of the page.
     const ty = PAGE.y + 750 - extra.length * LINE;
     // Today's plates in the space left between the lines and the totals: each guest above their dish,
     // or just a row of the dishes on a busy day.
-    const used = top + (Math.min(guests.length, MAX_LINES) + (guests.length > MAX_LINES ? 1 : 0)) * LINE;
+    const used = top + (shown + (guests.length > shown ? 1 : 0)) * LINE;
     const room = ty - used;
-    if (room >= 120) this.stickers(served.slice(0, MAX_STICKERS), PAGE.x + PAGE.w / 2 + 40, Math.round((used + ty) / 2) - 30, room >= 230);
+    if (room >= 120) this.stickers(this.stickerList(served), PAGE.x + PAGE.w / 2 + 40, Math.round((used + ty) / 2) - 30, room >= 230);
     this.add.sprite(left - 40, ty - 4, ART, artFrame('coin_0')).setScale(3).play('coin');
-    this.add.text(left, ty, `${t('diary.coinsToday', { n: coinsToday })}     ${t('diary.coinsTotal', { n: coinsTotal })}`, { ...ink, fontSize: '40px' }).setOrigin(0, 0.62);
+    const coins = [t('diary.coinsToday', { n: coinsToday }), ...(spent ? [t('diary.spent', { n: spent })] : []), t('diary.coinsTotal', { n: coinsTotal })];
+    this.add.text(left, ty, coins.join(spent ? '   ' : '     '), { ...ink, fontSize: '40px' }).setOrigin(0, 0.62);
     this.add.text(left, ty + LINE, `${t('diary.served', { n: served.length })}     ${t('diary.rustic', { n: served.filter((g) => g.mood === 'cozycooked').length })}`, ink).setOrigin(0, 0.62);
     this.add.text(PAGE.x + PAGE.w / 2, ty + LINE * 2 + 10, this.closingLine(guests, served), { ...ink, color: '#8a5a7a' }).setOrigin(0.5, 0.62);
     extra.forEach((line, i) => {
@@ -105,6 +113,15 @@ export class DiaryScene extends Phaser.Scene {
     });
     this.input.on('pointerdown', next);
     this.cameras.main.fadeIn(500);
+  }
+
+  // Up to MAX_STICKERS served guests, one of each dish first (so a new dish is never the one left out), in serving order.
+  stickerList(served) {
+    const key = (g) => g.dish.recipe ?? 'mystery';
+    const firsts = served.filter((g, i) => served.findIndex((o) => key(o) === key(g)) === i);
+    const picked = new Set(firsts.slice(0, MAX_STICKERS));
+    for (const g of served) if (picked.size < MAX_STICKERS) picked.add(g);
+    return served.filter((g) => picked.has(g));
   }
 
   // Served guests in a row, each one above the dish they had, with how they liked it (big = false: dishes only).
